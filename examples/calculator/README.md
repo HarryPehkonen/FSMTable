@@ -167,4 +167,4 @@ Both run in every configuration the gate builds, including ASan/UBSan and Thread
     NAMED_KINDS.md     `kind <name> = <n>` — the first addition to the reader
     ENTRY_EXIT.md      `state <name> entry ... exit ...` — the second
     QUESTIONS.md       every place the spec left a choice, and the reading taken
-    DESIGN-NOTES.md    decisions and their consequences, D-notes included
+    REPORT.md          what was delivered, and the gate verdict for each delivery
