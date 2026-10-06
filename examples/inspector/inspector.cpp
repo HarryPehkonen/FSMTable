@@ -4,12 +4,13 @@
 // This is the example that uses the LIBRARY without the generator: nothing is generated here, and
 // no machine is built at compile time. It is the smallest useful tool you can build on this format
 // — a formatter and a checker for .fsm files, in about a hundred and fifty lines — and it is the
-// only place in this repository where the two analyses of SPEC.md section 8 are used by something
-// other than their own tests.
+// only place in this repository where the analyses are used by something other than their own
+// tests. Two of them are SPEC.md section 8's; the third is the addition beside them.
 //
 // Exit codes, the same convention as fsmtable-gen: 0 nothing to report, 1 the file could not be
-// read or a state is unreachable, 2 the command line is wrong. A SINK state is reported and does
-// not fail the run, because a machine that ends somewhere is usually deliberate.
+// read or a state is unreachable, 2 the command line is wrong. A SINK state and a partially
+// covered pair are reported and do not fail the run: ending somewhere is usually deliberate, and
+// so is gating a row that has nothing behind it.
 #include "fsmtable.hpp"
 
 #include <fstream>
@@ -39,6 +40,27 @@ bool read_file(const std::string& path, std::string& text) {
     buffer << in.rdbuf();
     text = buffer.str();
     return true;
+}
+
+// A kind the way the generator names one: the declared name when the file declared it, the
+// number otherwise, so the report reads the same way the machine's own text does.
+std::string kind_label(int kind, const std::vector<fsmtable::KindName>& names) {
+    for (const fsmtable::KindName& entry : names) {
+        if (entry.kind == kind)
+            return entry.name;
+    }
+    return std::to_string(kind);
+}
+
+std::string joined_pairs(const std::vector<fsmtable::PartialPair>& pairs,
+                         const std::vector<fsmtable::KindName>& names) {
+    std::string out;
+    for (const fsmtable::PartialPair& pair : pairs) {
+        if (!out.empty())
+            out += ", ";
+        out += pair.from + " --" + kind_label(pair.kind, names) + "-->";
+    }
+    return out;
 }
 
 std::string joined(const std::vector<std::string>& names) {
@@ -110,6 +132,7 @@ int main(int argc, char** argv) {
 
     const std::vector<std::string> unreachable = fsmtable::unreachable(machine);
     const std::vector<std::string> sinks = fsmtable::sink_states(machine);
+    const std::vector<fsmtable::PartialPair> partial = fsmtable::partial_pairs(machine);
 
     std::cout << path << ": " << machine.name << " — " << machine.states.size() << " state(s), "
               << machine.transitions.size() << " row(s), " << kind_names.size()
@@ -118,6 +141,10 @@ int main(int argc, char** argv) {
     if (!sinks.empty()) {
         std::cout << "  sinks:    " << joined(sinks)
                   << "  (nothing leaves them; often deliberate)\n";
+    }
+    if (!partial.empty()) {
+        std::cout << "  partial:  " << joined_pairs(partial, kind_names)
+                  << "  (a guarded row with no unguarded row: a false guard leaves the event)\n";
     }
     if (!unreachable.empty()) {
         std::cout << "  UNREACHABLE: " << joined(unreachable) << "  (no path from "

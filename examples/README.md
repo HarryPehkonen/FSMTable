@@ -7,7 +7,7 @@ here to show a different face of the format:
 | --- | --- | --- |
 | [`calculator/`](calculator/README.md) | a line-oriented calculator: an expression in, an answer or an error out | the generator on **arithmetic** — refined rows as an operator-precedence table, a guard on an event's value, a self-transition, and the split between what the table decides and what the code around it holds |
 | [`protocol/`](protocol/README.md) | a connection lifecycle with retransmission and a timeout | the generator on **time** — a clock the format cannot hold, a refinement pair, a sink state, exit/action/entry composition, and the four limits a real design runs into |
-| [`inspector/`](inspector/README.md) | `fsmtable-inspect`: summarize a `.fsm`, report unreachable states and sinks, write the canonical form back | the **library without the generator** — `parse`, `dump` and the two analyses, wrapped in a tool with an exit code you could put in a hook |
+| [`inspector/`](inspector/README.md) | `fsmtable-inspect`: summarize a `.fsm`, report unreachable states, sinks and partially covered pairs, write the canonical form back | the **library without the generator** — `parse`, `dump` and the analyses, wrapped in a tool with an exit code you could put in a hook |
 
 ## Each one stands alone
 

@@ -4,16 +4,21 @@
 #            always a mistake, and `fsmtable-inspect` exits non-zero for it.
 #   Done     nothing leaves it — a sink state. That is sometimes exactly what you want (a refused
 #            connection, a terminal error), so it is reported and does not fail the run.
+#   Running --bump-->  guarded, and the only row for that pair: when the clause is false nothing
+#            else matches, so the event comes back unhandled rather than being ignored on purpose.
+#            Also reported, and also not a failure — the shape is legal, it is just worth knowing.
 #
 # `Orphan` has an outgoing row and no incoming one; `Done` has an incoming row and no outgoing one.
-# Both are one line away from being correct, which is the point.
+# All three are one line away from being correct, which is the point.
 version 1
 machine Dirty
 initial Start
 
 kind step = 1
 kind stop = 2
+kind bump = 3
 
 transition Start --step--> Running
 transition Running --stop--> Done
+transition Running --bump--> Running when lt 3 action note_bump
 transition Orphan --step--> Start

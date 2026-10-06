@@ -50,6 +50,25 @@ std::vector<std::string> unreachable(const Machine& m);
 // clause gates whether the row fires, not whether it exists (QUESTIONS.md Q3).
 std::vector<std::string> sink_states(const Machine& m);
 
+// The pairs a guard has to itself (2026-10-06). Not one of section 8's two — this one adds a
+// name rather than changing either, the same way the side tables below add parse overloads.
+//
+// Rule 9 (frozen) allows at most one guarded row per (from, kind) and fixes the canonical order
+// so the guarded row comes first, with the unguarded row behind it as the fallback. A pair with
+// no unguarded row therefore has nothing to match when the guard is false: `process()` reports
+// the event unhandled, and a driver that ignores that return value drops it. That is a legitimate
+// shape — "ignore this event unless the budget allows" is exactly one — which is why this is an
+// analysis a caller reports rather than a rule the parser enforces.
+//
+// `from` and `kind` are together the key: the same kind in two states is two pairs. The result is
+// in first-appearance order and deduplicated, like `unreachable` and `sink_states`.
+struct PartialPair {
+    std::string from;
+    int kind = 0;
+};
+
+std::vector<PartialPair> partial_pairs(const Machine& m);
+
 // Named event kinds (NAMED_KINDS.md, QUESTIONS.md Q12). Section 2 is frozen and says the arrow
 // slot holds a decimal integer, and section 4's block above is frozen too, so this is an
 // addition in the shape stage B used rather than a change to either: a file may declare

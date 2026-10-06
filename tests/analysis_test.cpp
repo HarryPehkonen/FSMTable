@@ -1,4 +1,5 @@
-// FSMTable stage B tests — the two analysis functions of SPEC.md section 8.
+// FSMTable stage B tests — the analysis functions of SPEC.md section 8, and the addition beside
+// them (`partial_pairs`, 2026-10-06).
 //
 // Written BEFORE the implementations, against stubs that return nothing: every test below
 // was watched fail, which is the RED this stage needed. Section 8 fixes the names, the
@@ -28,6 +29,7 @@ namespace {
 
 using fsmtable::Machine;
 using fsmtable::Op;
+using fsmtable::PartialPair;
 using fsmtable::Transition;
 
 [[noreturn]] void no_machine(const std::string& what) {
@@ -67,6 +69,10 @@ Transition edge(const std::string& from, int kind, const std::string& to) {
 
 Transition guarded_edge(const std::string& from, Op op, int value, const std::string& to) {
     return Transition{from, 1, true, op, value, to, ""};
+}
+
+Transition guarded(const std::string& from, int kind, const std::string& to) {
+    return Transition{from, kind, true, Op::Lt, 3, to, ""};
 }
 
 std::string joined(const std::vector<std::string>& names) {
@@ -225,4 +231,68 @@ TEST(Analysis, EveryParsedCorpusMachineAnalysesWithinItsOwnStates) {
             << name << ": the initial state was called unreachable";
     }
     EXPECT_GT(parsed_files, 0U) << "the corpus walk parsed no machine at all";
+}
+
+// ---------------------------------------------------------------- partial_pairs()
+
+TEST(PartialPairs, IsEmptyWhenNoPairCarriesAGuard) {
+    const Machine machine = machine_of("version 1\nmachine M\ninitial A\ntransition A --1--> B\n"
+                                       "transition B --1--> A\n",
+                                       "a machine with no guards at all");
+    EXPECT_TRUE(fsmtable::partial_pairs(machine).empty());
+}
+
+TEST(PartialPairs, IsEmptyForAMachineWithNoRows) {
+    const Machine machine = build("Solo", {"Solo"}, {});
+    EXPECT_TRUE(fsmtable::partial_pairs(machine).empty());
+}
+
+TEST(PartialPairs, ListsAPairWhoseOnlyRowIsGuarded) {
+    // One guarded row and nothing behind it: a false clause leaves no row to match, so the
+    // event comes back unhandled instead of being ignored deliberately.
+    const Machine machine = build("A", {"A", "B"}, {guarded("A", 7, "B"), edge("A", 8, "B")});
+    const std::vector<PartialPair> pairs = fsmtable::partial_pairs(machine);
+    ASSERT_EQ(pairs.size(), 1U);
+    EXPECT_EQ(pairs[0].from, "A");
+    EXPECT_EQ(pairs[0].kind, 7);
+}
+
+TEST(PartialPairs, DoesNotListAPairThatAlsoHasAnUnguardedRow) {
+    // Canonical order leaves the unguarded row last in its pair, so it matches whatever the
+    // guard let through: the pair can never drop an event, whichever way the guard goes.
+    const Machine machine = build("A", {"A", "B"}, {guarded("A", 7, "B"), edge("A", 7, "A")});
+    EXPECT_TRUE(fsmtable::partial_pairs(machine).empty());
+}
+
+TEST(PartialPairs, TreatsASelfTransitionPairLikeAnyOther) {
+    const Machine machine = build("A", {"A"}, {guarded("A", 1, "A")});
+    const std::vector<PartialPair> pairs = fsmtable::partial_pairs(machine);
+    ASSERT_EQ(pairs.size(), 1U);
+    EXPECT_EQ(pairs[0].from, "A");
+    EXPECT_EQ(pairs[0].kind, 1);
+}
+
+TEST(PartialPairs, ListsAPairOnceEvenWithMoreThanOneGuardedRow) {
+    // Rule 9 forbids this shape and the parser refuses it, but the analysis is defined for a
+    // machine built by hand too: two guarded rows are still one pair.
+    const Machine machine = build("A", {"A", "B"}, {guarded("A", 7, "B"), guarded("A", 7, "A")});
+    EXPECT_EQ(fsmtable::partial_pairs(machine).size(), 1U);
+}
+
+TEST(PartialPairs, KeysOnStateAndKindTogether) {
+    // The same kind in two states is two pairs, and only the one with no unguarded row is partial.
+    const Machine machine = build("A", {"A", "B", "C"},
+                                  {guarded("A", 7, "B"), guarded("C", 7, "B"), edge("C", 7, "A")});
+    const std::vector<PartialPair> pairs = fsmtable::partial_pairs(machine);
+    ASSERT_EQ(pairs.size(), 1U);
+    EXPECT_EQ(pairs[0].from, "A");
+}
+
+TEST(PartialPairs, IsInFirstAppearanceOrderNotKindOrder) {
+    const Machine machine
+        = build("A", {"A", "B", "C"}, {guarded("A", 9, "B"), guarded("A", 2, "C")});
+    const std::vector<PartialPair> pairs = fsmtable::partial_pairs(machine);
+    ASSERT_EQ(pairs.size(), 2U);
+    EXPECT_EQ(pairs[0].kind, 9);
+    EXPECT_EQ(pairs[1].kind, 2);
 }

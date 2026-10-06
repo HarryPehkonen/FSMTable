@@ -5,7 +5,7 @@ a tool that reads `.fsm` files would: it takes a file at *run* time, parses it, 
 analyses see, and can write the canonical form back out. Nothing is generated, and there is no
 machine compiled into it.
 
-It is also the only place in the repository where the two analyses of `SPEC.md` section 8
+It is also the only place in the repository where the analyses of `SPEC.md` section 8
 (`unreachable`, `sink_states`) are used by something other than their own tests, which makes it the
 smallest complete answer to "what else can I build on this library?" — about a hundred and fifty
 lines, including the usage text.
@@ -21,6 +21,8 @@ fsmtable-inspect --help
 - a one-line summary: the machine's name, its state and row counts, how many kinds it named;
 - its initial state;
 - **sink** states — nothing leaves them. Reported, and *not* a failure;
+- **partial** pairs — a row carrying a `when` clause with no unguarded row behind it for the same
+  state and kind, so a false guard leaves the event unhandled. Reported, and *not* a failure;
 - **unreachable** states — no path from the initial state. Always a failure;
 - with `--canonical`, the canonical text instead of the summary: the same machine the parser read,
   with the kinds and states declared above the frozen row block, in the canonical order the format
@@ -40,14 +42,17 @@ examples/protocol/protocol.fsm: Connection — 5 state(s), 12 row(s), 7 named ki
   every state is reachable from Closed
 
 $ ./build/fsmtable-inspect examples/inspector/dirty.fsm
-examples/inspector/dirty.fsm: Dirty — 4 state(s), 3 row(s), 2 named kind(s)
+examples/inspector/dirty.fsm: Dirty — 4 state(s), 4 row(s), 3 named kind(s)
   initial:  Start
   sinks:    Done  (nothing leaves them; often deliberate)
+  partial:  Running --bump-->  (a guarded row with no unguarded row: a false guard leaves the event)
   UNREACHABLE: Orphan  (no path from Start)
 ```
 
 `dirty.fsm` is in this directory precisely so that output has an example: `Orphan` is never a
-destination, and `Done` has no outgoing row. Both are one line away from being correct.
+destination, `Done` has no outgoing row, and `Running --bump-->` is guarded with nothing behind the
+guard. Each is one line away from being correct — an incoming row, an outgoing row, an unguarded
+row — which is the point.
 
 The block above is compared line for line by `tools/check-doc-claims.sh` on every gate run: lines
 beginning `$ ` are the commands it runs, and every other line is what those commands must print.
@@ -63,6 +68,16 @@ An unreachable state is the opposite: it is a state you wrote, named, and can ne
 be deliberate — there is no path to it, so nothing it contains can ever happen. This is why the tool
 reports the first and fails on the second.
 
+A partial pair is the third case, and it is not a failure either. Rule 9 lets one row per state and
+kind carry a `when` clause, puts that row first, and leaves any unguarded row behind it as the
+fallback; a pair with no fallback is a machine saying "this event may go unhandled here" — and the
+back end says so, since `process()` reports it rather than pretending a row matched. That is a real
+feature ("ignore a tick unless the budget allows") and also how a machine quietly stops answering,
+and the difference between the two is exactly what a report can draw. The protocol example takes the
+other route for its own rejections: every pair there has a fallback row, so nothing is ever
+unhandled, and its driver turns the events it does receive into an exit code. A machine that omits
+the fallback shows up in this report instead.
+
 ## The library calls behind it
 
 ```
@@ -71,13 +86,17 @@ fsmtable::parse(text, error, kind_names, state_actions)   the four-argument read
 fsmtable::dump(machine, kind_names, state_actions)        the matching writer
 fsmtable::unreachable(machine)                            SPEC.md section 8
 fsmtable::sink_states(machine)                            SPEC.md section 8
+fsmtable::partial_pairs(machine)                          the addition beside them: a guarded row
+                                                          with no unguarded partner
 ```
 
 The narrow readers — two-argument `parse`, one- and two-argument `dump` — are for a caller that does
 not care about the side tables: a machine that declares no kinds and decorates no states parses to
 the same `Machine` either way, which is what makes the two additions additive rather than a fork of
 the frozen block. `SPEC.md` section 4 holds the frozen signatures; `NAMED_KINDS.md` and
-`ENTRY_EXIT.md` hold the two additions, and each says which reader a caller needs.
+`ENTRY_EXIT.md` hold the two additions, and each says which reader a caller needs. `partial_pairs`
+is a third addition of that kind: it adds a name beside section 8's two rather than changing either,
+which is why the two analyses the spec names still have the signatures it fixed.
 
 ## How to adapt it
 
