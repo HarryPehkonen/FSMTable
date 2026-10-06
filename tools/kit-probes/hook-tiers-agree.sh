@@ -102,10 +102,31 @@ fi
 # ---------------------------------------------------------------- G3/G4: the tiers cover the stages
 stage_total=0
 decorations=0
-for stage in $(grep -oE '^stage_[a-z0-9_]+\(\)' "$S" | sed 's/^stage_//; s/()$//' | sort -u); do
+# The stage set comes from the gate's own `--list`, not from a pattern over the source: the set of
+# things a gate can be asked for is the gate's answer, whether it dispatches through a case table,
+# a `stage_$1` call, or something else. Reading function names would also sweep up helpers — FSMgine's
+# banner helper is literally called stage_banner.
+listed=$("$S" --list 2>/dev/null | sed -n 's/^stages:[[:space:]]*//p')
+how="--list"
+if [ -z "${listed:-}" ]; then
+    listed=$(grep -oE '^[[:space:]]+[a-z0-9_]+\)[[:space:]]+stage_[a-z0-9_]+[[:space:]]*;;' "$S" |
+        sed 's/^[[:space:]]*//; s/).*//' | sort -u | tr '\n' ' ')
+    how="the dispatch table"
+fi
+if [ -z "${listed:-}" ]; then
+    note_fail "cannot learn the stage set (neither a 'stages:' line from --list nor a dispatch table) — this check would examine an empty set"
+fi
+for stage in ${listed:-}; do
     stage_total=$((stage_total + 1))
     body=$(awk -v fn="^stage_${stage}\\(\\) \\{" '$0 ~ fn { inside = 1 } inside { print } inside && /^}/ { exit }' "$S")
-    if ! printf '%s\n' "$body" | grep -q 'ci_begin'; then
+    # A forwarding alias is a stage whose whole body is one call to another stage — `lint` naming
+    # `tidy`, in the kit's own template. Detected by that shape rather than by a helper's name:
+    # keying on `ci_begin` once marked six real stages in FSMgine as aliases, which quietly shrank
+    # this check's input set to nothing. Comments do not count as body.
+    inner=$(printf '%s\n' "$body" | sed '1d; $d' | grep -vE '^[[:space:]]*(#|$)' || true)
+    inner_lines=$(printf '%s\n' "$inner" | grep -c . || true)
+    if [ "${inner_lines:-0}" -eq 1 ] &&
+        printf '%s\n' "$inner" | grep -qE '^[[:space:]]*stage_[a-z0-9_]+[[:space:]]+"\$@"[[:space:]]*$'; then
         printf '    (skipped stage_%s: a forwarding alias, not a stage of its own)\n' "$stage"
         continue
     fi
@@ -118,7 +139,7 @@ for stage in $(grep -oE '^stage_[a-z0-9_]+\(\)' "$S" | sed 's/^stage_//; s/()$//
     esac
 done
 if [ "$stage_total" -eq 0 ]; then
-    note_fail "no stage_* functions found in $S — this check examined an empty set and proves nothing"
+    note_fail "no dispatched stage_* functions found in $S — this check examined an empty set and proves nothing"
 elif [ "$decorations" -eq 0 ]; then
     # Only when nothing was reported: an "ok" next to a failure reads as a contradiction.
     check 0 "every stage the gate defines is reachable from the full tier ($stage_total defined)"
@@ -140,8 +161,8 @@ if [ -n "${fast:-}" ] && [ -n "${full:-}" ]; then
 fi
 
 # ---------------------------------------------------------------- G5: the printed lists equal the variables
-doc_fast=$(grep -E '^#   fast  \(pre-commit\)' "$S" | head -1 | sed 's/^#   fast  (pre-commit)[[:space:]]*//; s/[[:space:]]*$//')
-doc_full=$(grep -A 1 -E '^#   full  \(pre-push\)' "$S" | sed 's/^#   full  (pre-push)[[:space:]]*//; s/^#[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | sed 's/[[:space:]]*$//; s/^--[a-z-]* //')
+doc_fast=$(grep -E '^#   fast[[:space:]]+\(pre-commit\)' "$S" | head -1 | sed 's/^#   fast[[:space:]]*(pre-commit)[[:space:]]*//' | sed 's/^--[a-z-]* //; s/[[:space:]]*$//')
+doc_full=$(grep -A 1 -E '^#   full[[:space:]]+\(pre-push\)' "$S" | sed 's/^#   full[[:space:]]*(pre-push)[[:space:]]*//; s/^#[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | sed 's/[[:space:]]*$//; s/^--[a-z-]* //')
 if [ -z "${doc_fast:-}" ] || [ -z "${doc_full:-}" ]; then
     note_fail "the gate's header comment no longer prints the two tiers — the block this probe compares is gone"
 else
