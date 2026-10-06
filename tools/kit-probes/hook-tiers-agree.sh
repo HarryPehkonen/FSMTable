@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# guards: templates/hooks/pre-commit, templates/hooks/pre-push, templates/cpp/ci.sh
+# guards: templates/hooks/pre-commit
+# guards: templates/hooks/pre-push
+# guards: templates/cpp/ci.sh
 #
 # Kit-conformance probe for the tier fix of 2026-10-06 (found when an unformatted commit passed
 # pre-commit and only a hand run caught it).
@@ -34,9 +36,31 @@
 # Exit 0 = PROBE VERIFIED, 1 = PROBE FAILED.
 set -uo pipefail
 
-S=${1:?usage: hook-tiers-agree.sh <gate-script> [repo-root]}
+S=${1:?usage: hook-tiers-agree.sh <gate-script|hook> [repo-root]}
 [ -f "$S" ] || { echo "PROBE FAILED (no such script: $S)"; exit 1; }
-R=${2:-$(cd "$(dirname "$S")/.." && pwd)}
+R=${2:-}
+# The kit's runner passes the file a probe GUARDS, which for this probe may be a hook; a repo's
+# `kitprobes` stage passes the gate. Take either: if the argument is not the gate, the gate is the
+# one beside it (kit layout first, then repo layout, then by walking up from the hook).
+hook_only=""
+if [ "$(basename "$S")" != "ci.sh" ]; then
+    hook_only=$S
+    S=""
+    for cand in "${R:+$R/tools/ci.sh}" "${R:+$R/templates/cpp/ci.sh}"; do
+        [ -n "$cand" ] && [ -f "$cand" ] && { S=$cand; break; }
+    done
+    if [ -z "$S" ]; then
+        d=$(dirname "$hook_only")
+        while [ "$d" != "/" ] && [ "$d" != "." ]; do
+            for cand in "$d/tools/ci.sh" "$d/templates/cpp/ci.sh"; do
+                [ -f "$cand" ] && { S=$cand; break 2; }
+            done
+            d=$(dirname "$d")
+        done
+    fi
+    [ -n "$S" ] || { echo "PROBE FAILED (guarded file $hook_only: no gate script beside it)"; exit 1; }
+fi
+[ -n "${R:-}" ] || R=$(cd "$(dirname "$S")/.." && pwd)
 [ -d "$R" ] || { echo "PROBE FAILED (no such repo root: $R)"; exit 1; }
 
 fails=0
@@ -72,7 +96,19 @@ fi
 # ---------------------------------------------------------------- G2: the hooks name a tier
 hooks_seen=0
 stages_in_hooks=0
-for hook in "$R/.githooks/pre-commit" "$R/.githooks/pre-push"; do
+# Which hooks this copy carries: the repo layout first, the kit's template layout second. When the
+# kit's runner pointed the probe at one guarded hook, that is the hook this run is about.
+hooks=()
+if [ -n "$hook_only" ]; then
+    hooks=("$hook_only")
+else
+    for h in pre-commit pre-push; do
+        for d in "$R/.githooks" "$R/templates/hooks"; do
+            [ -f "$d/$h" ] && { hooks+=("$d/$h"); break; }
+        done
+    done
+fi
+for hook in ${hooks[@]+"${hooks[@]}"}; do
     [ -f "$hook" ] || continue
     hooks_seen=$((hooks_seen + 1))
     name=$(basename "$hook")
@@ -95,8 +131,8 @@ for hook in "$R/.githooks/pre-commit" "$R/.githooks/pre-push"; do
         check 0 "$name names a tier ($(printf '%s' "$args" | tr '\n' ' ' | sed 's/ *$//'))"
     fi
 done
-if [ "$hooks_seen" -ne 2 ]; then
-    note_fail "found $hooks_seen of 2 hooks in $R/.githooks — an unarmed gate is worse than none, because it looks armed"
+if [ -z "$hook_only" ] && [ "$hooks_seen" -ne 2 ]; then
+    note_fail "found $hooks_seen of 2 hooks — an unarmed gate is worse than none, because it looks armed"
 fi
 
 # ---------------------------------------------------------------- G3/G4: the tiers cover the stages
