@@ -35,4 +35,19 @@ struct Machine {
 std::optional<Machine> parse(std::string_view text, Error& error);
 std::string dump(const Machine& m);
 
+// Stage B (SPEC.md section 8). Not part of the frozen section 4 block above: section 8
+// fixes these signatures, section 4 never mentioned them.
+//
+// Both return a subset of `m.states`, in first-appearance order, deduplicated. Neither
+// mutates the machine, and neither can fail — a machine the parser produced is always
+// analysable.
+
+// States with no path from `m.initial`. The initial state is reachable by definition, so it
+// is never in the result.
+std::vector<std::string> unreachable(const Machine& m);
+
+// States with no outgoing transition. A row with a `when` clause counts as outgoing: the
+// clause gates whether the row fires, not whether it exists (QUESTIONS.md Q3).
+std::vector<std::string> sink_states(const Machine& m);
+
 } // namespace fsmtable

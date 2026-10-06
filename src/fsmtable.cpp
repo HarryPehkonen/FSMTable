@@ -414,4 +414,68 @@ std::string dump(const Machine& machine) {
     return out;
 }
 
+namespace {
+
+// Where `name` sits in `states`, or states.size() when it is not declared there. The
+// analyses return a subset of `states`, so a name that is absent leads nowhere rather than
+// being invented (QUESTIONS.md Q4).
+std::size_t state_index(const std::vector<std::string>& states, const std::string& name) {
+    for (std::size_t i = 0; i < states.size(); ++i) {
+        if (states[i] == name)
+            return i;
+    }
+    return states.size();
+}
+
+} // namespace
+
+std::vector<std::string> unreachable(const Machine& machine) {
+    // A worklist, not a recursive walk: a machine is a graph, and a cycle in it must not
+    // become a stack overflow. Reachability is structural — a `when` clause gates whether a
+    // row fires, not whether the row exists (QUESTIONS.md Q3) — and the initial state is
+    // marked before anything else, so it can never come back as unreachable.
+    const std::size_t none = machine.states.size();
+    std::vector<char> reached(none, 0);
+    std::vector<std::size_t> work;
+
+    const auto visit = [&](const std::string& name) {
+        const std::size_t index = state_index(machine.states, name);
+        if (index != none && reached[index] == 0) {
+            reached[index] = 1;
+            work.push_back(index);
+        }
+    };
+
+    visit(machine.initial);
+    while (!work.empty()) {
+        const std::size_t index = work.back();
+        work.pop_back();
+        for (const Transition& row : machine.transitions) {
+            if (row.from == machine.states[index])
+                visit(row.to);
+        }
+    }
+
+    // Walking `states` in order is what makes the result first-appearance order: the list is
+    // never sorted, and sorting it here would silently break the contract.
+    std::vector<std::string> result;
+    for (std::size_t i = 0; i < machine.states.size(); ++i) {
+        if (reached[i] == 0)
+            result.push_back(machine.states[i]);
+    }
+    return result;
+}
+
+std::vector<std::string> sink_states(const Machine& machine) {
+    std::vector<std::string> result;
+    for (const std::string& state : machine.states) {
+        const bool has_outgoing
+            = std::any_of(machine.transitions.begin(), machine.transitions.end(),
+                          [&state](const Transition& row) { return row.from == state; });
+        if (!has_outgoing)
+            result.push_back(state);
+    }
+    return result;
+}
+
 } // namespace fsmtable

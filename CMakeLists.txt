@@ -31,7 +31,7 @@ target_compile_options(fsmTable PRIVATE ${FSMTABLE_WARNINGS})
 if(FSMTABLE_BUILD_TESTS)
     include(CTest)
     find_package(GTest REQUIRED)
-    add_executable(fsmTable_tests tests/parser_test.cpp)
+    add_executable(fsmTable_tests tests/parser_test.cpp tests/analysis_test.cpp)
     target_link_libraries(fsmTable_tests PRIVATE fsmTable GTest::gtest_main)
     target_compile_options(fsmTable_tests PRIVATE ${FSMTABLE_WARNINGS})
     # The corpus is input, not a build product: the test that walks it needs the source

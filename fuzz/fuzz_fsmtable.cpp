@@ -5,12 +5,15 @@
 // Those three checks are the whole target; the corpus in corpus/ is the seed.
 #include "fsmtable.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <iterator>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -67,6 +70,35 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
     if (fsmtable::dump(*again) != once) {
         broken("dump -> parse -> dump is not stable");
+    }
+
+    // Stage B's analyses carry the same promise as the rest of the library: total, and
+    // answerable for any machine the parser accepted. Section 8 states the contract — a
+    // subset of the declared states, in first-appearance order, without duplicates — and the
+    // header adds that the initial state is never among the unreachable.
+    const std::vector<std::string> orphans = fsmtable::unreachable(*machine);
+    const std::vector<std::string> sinks = fsmtable::sink_states(*machine);
+    // Named locals, not the temporaries that produced them: an address taken in the
+    // initializer list below would leave this loop reading freed vectors.
+    for (const std::vector<std::string>* list : {&orphans, &sinks}) {
+        bool first = true;
+        std::size_t previous = 0;
+        for (const std::string& name : *list) {
+            const auto found = std::find(machine->states.begin(), machine->states.end(), name);
+            if (found == machine->states.end()) {
+                broken("an analysis returned a name that is not a declared state");
+            }
+            const auto position
+                = static_cast<std::size_t>(std::distance(machine->states.begin(), found));
+            if (!first && position <= previous) {
+                broken("an analysis returned states out of first-appearance order, or twice");
+            }
+            previous = position;
+            first = false;
+        }
+    }
+    if (std::find(orphans.begin(), orphans.end(), machine->initial) != orphans.end()) {
+        broken("the initial state was reported unreachable");
     }
     return 0;
 }

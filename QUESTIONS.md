@@ -2,9 +2,9 @@
 
 SPEC.md section 0: "If something is genuinely ambiguous, write the question into
 QUESTIONS.md and take the simplest reading rather than guessing elaborately." These are
-the only two places I found a genuine choice to make. Both are candidates for the spec to
-settle in a later revision; neither changes the frozen API, the frozen test names or the
-row format.
+the only places I found a genuine choice to make — two in stage A (Q1, Q2) and two in
+stage B (Q3, Q4). Each is a candidate for the spec to settle in a later revision; none
+changes the frozen API, the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
 
