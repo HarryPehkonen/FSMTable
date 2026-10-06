@@ -49,6 +49,9 @@ examples/inspector/dirty.fsm: Dirty — 4 state(s), 3 row(s), 2 named kind(s)
 `dirty.fsm` is in this directory precisely so that output has an example: `Orphan` is never a
 destination, and `Done` has no outgoing row. Both are one line away from being correct.
 
+The block above is compared line for line by `tools/check-doc-claims.sh` on every gate run: lines
+beginning `$ ` are the commands it runs, and every other line is what those commands must print.
+
 ## Why a sink is not a failure and an unreachable state is
 
 A sink is how a machine says "the story ends here" — a refused connection, a terminal error, a
@@ -82,13 +85,18 @@ the frozen block. `SPEC.md` section 4 holds the frozen signatures; `NAMED_KINDS.
 deliberately invalid:
 
 ```sh
-for f in $(git ls-files 'corpus/*.fsm' 'examples/*/*.fsm'); do
+for f in $(git ls-files 'corpus/*.fsm' 'examples/*/*.fsm' |
+           grep -v -e 'corpus/invalid_' -e 'examples/inspector/dirty.fsm'); do
     ./build/fsmtable-inspect "$f" || exit 1
 done
 ```
 
-`tests/fixtures/` is left out on purpose: those files exist to be rejected, and
-`tests/fixtures/keyword_state.fsm` is one of them.
+Three exclusions, each for its own reason. `tests/fixtures/` is left out because those files exist to
+be rejected — `tests/fixtures/keyword_state.fsm` is one. `corpus/invalid_*.fsm` is left out for the
+same reason: the corpus carries deliberately broken input for the parser's own tests, and two of them
+(`invalid_junk.fsm`, `invalid_ambiguous.fsm`) are exactly the kind of file this tool is supposed to
+complain about. And `examples/inspector/dirty.fsm` is left out because it is in *this* directory
+precisely so that being reported is its job.
 
 **Writing the canonical form back needs a temporary file.** The tool reads its input before it writes
 anything, but the shell truncates on `>` before the process starts, so
@@ -100,6 +108,10 @@ anything, but the shell truncates on `>` before the process starts, so
 is the safe shape. `./build/fsmtable-inspect --canonical f.fsm > f.fsm` empties `f.fsm` and then
 reports that it cannot parse it — which is a shell trap rather than a bug, and the kind of thing
 worth knowing before pointing this at a file you care about.
+
+**Both shell recipes above are checked too.** `tools/check-doc-claims.sh` runs the tree check over
+`corpus/` and `examples/`, and it runs the canonical-form recipe — including the trap. A documented
+footgun is still a claim about behaviour, and the way to know it is still there is to test for it.
 
 **Add the check the library does not have.** The one this format can actually have is the other half
 of rule 9: **a guarded row with no unguarded partner** — a machine that answers that kind only above

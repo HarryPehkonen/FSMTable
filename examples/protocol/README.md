@@ -184,10 +184,14 @@ transition HalfOpen --expire--> Refused action on_give_up
 transition HalfOpen --tick--> HalfOpen
 ```
 
-Verified against the real generator, not by eye: `fsmtable-gen` accepts it at **6 states and 16
-rows**, and generates `SynSent_leaving_to_HalfOpen` and `HalfOpen_leaving_to_HalfOpen` because
-`SynSent` has an exit clause and `HalfOpen` an entry clause — the wrapper exists exactly where there
-is something to compose. `fsmtable-inspect` still exits 0.
+Verified against the real generator, not by eye: `fsmtable-gen` accepts it at **6 states and 16 rows**,
+and generates `SynSent_leaving_to_HalfOpen` and `HalfOpen_leaving_to_HalfOpen` because `SynSent` has
+an exit clause and `HalfOpen` an entry clause — the wrapper exists exactly where there is something to
+compose. `fsmtable-inspect` still exits 0.
+
+`tools/check-doc-claims.sh` re-derives that on every gate run: it appends the block above to the real
+`protocol.fsm`, requires the generator to accept it, and requires the two names it read out of this
+sentence to appear in the header it wrote.
 
 ## Where to read next
 

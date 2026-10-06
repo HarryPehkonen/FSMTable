@@ -251,6 +251,13 @@ if(FSMTABLE_BUILD_TESTS)
     # repository does not have reached a shipped README once already.
     add_test(NAME docs_links_resolve
         COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && sh tools/check-doc-links.sh")
+
+    # The claims the examples' READMEs make, re-derived from the real tools: a recipe has to generate
+    # the counts its document states, a quoted output has to be that output, a documented shell trap
+    # has to still be a trap. tools/check-doc-claims.sh lists exactly what it re-derives, and its
+    # teeth are proved by sabotage in that script's own terms.
+    add_test(NAME docs_claims_hold
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && sh tools/check-doc-claims.sh \"$<TARGET_FILE:fsmtable_gen>\" \"$<TARGET_FILE:fsmtable-inspect>\"")
 endif()
 
 # The fuzz target is written against libFuzzer's entry point, so it can only be LINKED

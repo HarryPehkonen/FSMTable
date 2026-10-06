@@ -119,20 +119,28 @@ things are worth noticing, because they are the vocabulary the format gives you:
 
 ### Worked example: add a `%` (remainder) operator
 
-The `.fsm` half of this is verified against the real generator (it generates: 8 states, 27 rows);
-the C++ half is the two lines any new kind needs.
+The `.fsm` half is four lines appended to `calculator.fsm`: a kind, and the same guarded pair
+division uses, because `x % 0` traps too and the divisor rides on the event.
 
-    calculator.fsm   kind mod = 8                                     # with the other kinds
-    calculator.fsm   transition Accum --mod--> PendingMod
-    calculator.fsm   transition PendingMod --number--> Error when eq 0 action note_division_by_zero
-    calculator.fsm   transition PendingMod --number--> Accum action mod_operand
-    calculator.cpp   case '%': return Token{CalculatorKind::mod, 0};   # in the tokeniser
-    calculator.cpp   void mod_operand(const CalculatorEvent& event) { ... }   # the header declares it
+```fsm
+kind mod = 8
+transition Accum --mod--> PendingMod
+transition PendingMod --number--> Error when eq 0 action note_division_by_zero
+transition PendingMod --number--> Accum action mod_operand
+```
+
+The C++ half is the two lines any new kind needs — one case in the tokeniser, and one action, which
+the generated header declares (misspell it and the link fails, which is the point):
+
+```cpp
+case '%': return Token{CalculatorKind::mod, 0};         // in the tokeniser
+void mod_operand(const CalculatorEvent& event) { ... }  // the header declares this name
+```
 
 Nothing else changes. `PendingMod` needs no declaration — the row that names it declares it — and
-the two `PendingMod --number-->` rows are the same guarded pair as division, because `x % 0` traps
-too and the guard can see it (the divisor rides on the event). Rebuild and `dump` will print the new
-rows in canonical order.
+`dump` prints the new rows in canonical order. `tools/check-doc-claims.sh` appends the block above to
+the real `calculator.fsm` on every gate run and requires the generator to accept it at
+**8 states and 27 rows**, so the recipe cannot go stale quietly.
 
 ## The split, and what it cost
 

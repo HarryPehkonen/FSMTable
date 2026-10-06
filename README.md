@@ -89,7 +89,7 @@ number and a message.
     corpus/          .fsm files the tests and the fuzzer share
     examples/        calculator, protocol, inspector — three complete consumers
     fuzz/            the libFuzzer target
-    tools/           ci.sh (the gate) and the kit probes
+    tools/           ci.sh (the gate), the kit probes, and the two document checkers
     .ci/             the accepted clang-tidy findings, with the reason for each
 
 ## Two things worth knowing before reading the code
