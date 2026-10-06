@@ -50,6 +50,40 @@ target_link_libraries(fsmtable_gen PRIVATE fsmTable)
 target_compile_options(fsmtable_gen PRIVATE ${FSMTABLE_WARNINGS})
 set_target_properties(fsmtable_gen PROPERTIES OUTPUT_NAME fsmtable-gen)
 
+# Where the generator writes the headers it produces: the corpus inputs, the fixture, and
+# the calculator example below.
+set(FSMTABLE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${FSMTABLE_GENERATED_DIR}")
+
+# --- the calculator example: the first real consumer of the generator. Its machine comes
+# from its own .fsm through the same tool the tests' inputs go through, and its core is a
+# library so the binary and the tests share one build of it. Semantics:
+# examples/calculator/README.md.
+set(FSMTABLE_CALCULATOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/examples/calculator")
+
+add_custom_command(
+    OUTPUT "${FSMTABLE_GENERATED_DIR}/fsm_calculator.hpp"
+    COMMAND fsmtable_gen examples/calculator/calculator.fsm
+            -o "${FSMTABLE_GENERATED_DIR}/fsm_calculator.hpp"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    DEPENDS fsmtable_gen "${FSMTABLE_CALCULATOR_DIR}/calculator.fsm"
+    COMMENT "fsmtable-gen: calculator.fsm -> fsm_calculator.hpp"
+    VERBATIM)
+add_custom_target(fsmtable_calculator_header
+    DEPENDS "${FSMTABLE_GENERATED_DIR}/fsm_calculator.hpp")
+
+add_library(calculator_core STATIC examples/calculator/calculator.cpp)
+add_dependencies(calculator_core fsmtable_calculator_header)
+target_link_libraries(calculator_core PUBLIC fsmTable)
+target_compile_options(calculator_core PRIVATE ${FSMTABLE_WARNINGS})
+target_include_directories(calculator_core PUBLIC
+    "${FSMTABLE_CALCULATOR_DIR}" "${FSMTABLE_GENERATED_DIR}")
+target_include_directories(calculator_core SYSTEM PUBLIC "${FSMTABLE_FSMGINE_DIR}/include")
+
+add_executable(calculator examples/calculator/main.cpp)
+target_link_libraries(calculator PRIVATE calculator_core)
+target_compile_options(calculator PRIVATE ${FSMTABLE_WARNINGS})
+
 if(FSMTABLE_BUILD_TESTS)
     include(CTest)
     find_package(GTest REQUIRED)
@@ -81,8 +115,6 @@ if(FSMTABLE_BUILD_TESTS)
     # follows, so a generator that emits something that does not compile fails the build rather
     # than a review. Paths are relative to the source directory so each header's provenance
     # comment is stable wherever the build happens.
-    set(FSMTABLE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    file(MAKE_DIRECTORY "${FSMTABLE_GENERATED_DIR}")
     set(FSMTABLE_GENERATOR_INPUTS
         corpus/traffic_light.fsm
         corpus/guarded.fsm
@@ -128,6 +160,16 @@ if(FSMTABLE_BUILD_TESTS)
         COMMAND fsmtable_gen "${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm")
     set_tests_properties(fsmtable_gen_prints_a_header PROPERTIES PASS_REGULAR_EXPRESSION
         "inline constexpr std::array<fsmgine::compiled::Transition<TrafficLightState, TrafficLightEvent>, 3> TrafficLightRows")
+
+    add_executable(fsmTable_calculator_tests examples/calculator/calculator_test.cpp)
+    target_link_libraries(fsmTable_calculator_tests PRIVATE calculator_core GTest::gtest_main)
+    target_compile_options(fsmTable_calculator_tests PRIVATE ${FSMTABLE_WARNINGS})
+    add_test(NAME fsmTable_calculator_tests COMMAND fsmTable_calculator_tests)
+
+    # The end-to-end session: the executable, fed lines, compared line for line. Piped
+    # stdin is not a terminal, so no prompt appears in the expected output.
+    add_test(NAME calculator_session
+        COMMAND sh -c "\"$<TARGET_FILE:calculator>\" < \"${FSMTABLE_CALCULATOR_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_CALCULATOR_DIR}/input/session.expected\" -")
 endif()
 
 # The fuzz target is written against libFuzzer's entry point, so it can only be LINKED

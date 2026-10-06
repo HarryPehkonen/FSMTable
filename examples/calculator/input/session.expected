@@ -1,0 +1,14 @@
+12
+24
+6
+3
+3
+error: division by zero
+error: incomplete expression
+error: unexpected number 3
+error: unexpected operator +
+error: unexpected character '&' at column 4
+2
+error: number out of range
+error: overflow
+24

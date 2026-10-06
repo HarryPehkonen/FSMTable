@@ -3,9 +3,9 @@
 SPEC.md section 0: "If something is genuinely ambiguous, write the question into
 QUESTIONS.md and take the simplest reading rather than guessing elaborately." These are
 the only places I found a genuine choice to make — two in stage A (Q1, Q2), two in stage B
-(Q3, Q4), three in stage C (Q5, Q6, Q7) and two in the generator that follows them (Q8, Q9).
-Each is a candidate for the spec to settle in a later revision; none changes the frozen API,
-the frozen test names or the row format.
+(Q3, Q4), three in stage C (Q5, Q6, Q7), two in the generator that follows them (Q8, Q9) and
+two in the calculator example (Q10, Q11). Each is a candidate for the spec to settle in a
+later revision; none changes the frozen API, the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
 
@@ -149,3 +149,44 @@ they are simply less readable and less checkable here.
 
 **The alternative:** emit the chain, one statement per row: shorter to write, and it would hide
 the canonical order inside a sequence of calls with a mutable builder between them.
+
+## Q10 — Can a row branch on data the machine accumulated?
+
+The calculator example needs two such branches: `x / 0` and an overflow. A `when` clause
+compares one int that rides on the event (SPEC.md section 3) and the machine holds nothing
+else, so the answer depends on where the data the branch needs already is.
+
+**Reading taken:** on the event, yes; accumulated, no. Division by zero is expressible
+because both halves of the question are already visible at the transition: the divisor is
+this event's value, and the pending operator is a state (`PendingDiv`), so
+`transition PendingDiv --1--> Error when eq 0` decides it, and the example's test asserts the
+machine really ends in `Error` — not merely that an error was printed. Overflow is not
+expressible: the product is in neither the event nor the state, so it is caught in the
+arithmetic layer and reported by the shell.
+
+The practical consequence is a split a caller has to design for, not a limitation to work
+around: put the branch's case in the state (one `Pending*` per operator, an `Error` state)
+and the operand on the event, and the machine decides; a branch that needs the running value
+belongs to the arithmetic. `x / 0 + 3` also shows what the `Error` state buys: made total
+over the rest of the line, it keeps the *first* failure as the reported one instead of the
+later token that gets refused.
+
+**The alternative:** a v2 guard that calls a caller-supplied predicate over the caller's own
+data — `when divisor_is_zero` — which is the format decision this example forces. It would
+move overflow into the table too, at the cost of rows no longer being plain data.
+
+## Q11 — How does an action reach state the caller holds?
+
+An action in the compiled back end is a plain `void (*)(const Event&)` function pointer — it
+cannot capture — and the format names actions without passing anything to them.
+
+**Reading taken:** a pointer the caller owns, installed for the duration of a line and
+cleared when the line ends (`calc::install` in the example). The lifetime is one call, which
+is what makes it safe to reason about: nothing outside a line can observe it, and the
+example is single-threaded, which the tsan stage checks for it as well as for the library.
+
+**The alternative:** a context parameter in the action type
+(`void (*)(void* context, const Event&)`, the shape libuv's callbacks use), which keeps the
+row a literal type but threads the caller's state through the back end explicitly. The
+interpreted back end already offers the other answer: `std::function` actions can capture,
+at the cost of the table's shape on the hot path.
