@@ -164,3 +164,31 @@ families — a wrong count, a name that does not exist, and a stale output line.
     GATE PASSED
     Both lines are from the run on commit ed297d8; this file is the only difference from that tree, and
     the run was repeated after it was added.
+
+
+## Appendix — the third analysis, and what measuring it corrected
+
+`fsmtable::partial_pairs` (`66cd3bd`) is the other half of rule 9. The rule allows one guarded row per
+state and kind, and fixes the canonical order so the guarded row comes first with an unguarded row
+behind it as the fallback; a pair with no fallback is the only shape where a false guard leaves
+nothing to match, and the back end reports the event rather than pretending a row matched. The shape
+is legal — "ignore a tick unless the budget allows" is exactly one — so it is an analysis to report
+rather than a rule to enforce.
+
+It was built test-first against a stub that returned nothing, and that RED run is worth reading twice:
+five of the eight tests failed against the stub, and the three that passed were the ones expecting an
+empty result, which any stub satisfies. The tests that pin only what must *not* be reported are the
+weakest in the set, and knowing which ones those are is the difference between a green suite and
+evidence.
+
+One claim of mine died under the new analysis rather than under review. I had described the protocol
+example as carrying deliberate partial pairs — a `data` event in `SynSent` that the driver reports as
+a protocol violation — and the report says it carries none: every pair in that machine has an
+unguarded fallback row, which is exactly how it turns an unacceptable event into a `Refused` sink.
+The tool said so on its first run, against the machine it was built beside.
+
+    Gate verdict line for that commit (verbatim):
+    all 12 stage(s) passed in 171s
+    GATE PASSED
+    That line is from the run on commit 66cd3bd; this file is the only difference from that tree, and
+    the run was repeated after it was added.
