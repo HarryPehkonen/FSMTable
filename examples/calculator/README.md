@@ -70,7 +70,7 @@ parameter.
 
 | file | what it is |
 | --- | --- |
-| `calculator.fsm` | the machine: 7 states, 7 kinds, 24 rows, one comment naming the kind numbers |
+| `calculator.fsm` | the machine: 7 states, 7 *named* kinds, 24 rows — the rows read `--add-->`, not `--2-->` (NAMED_KINDS.md) |
 | `calculator.cpp` | the tokeniser, the line driver, and the 7 actions the generated header declares |
 | `calculator.hpp` | `Outcome`, `Registers`, `Shell` — the whole API, no I/O |
 | `main.cpp` | read a line, hand it over, print what came back |

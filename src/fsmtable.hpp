@@ -50,4 +50,27 @@ std::vector<std::string> unreachable(const Machine& m);
 // clause gates whether the row fires, not whether it exists (QUESTIONS.md Q3).
 std::vector<std::string> sink_states(const Machine& m);
 
+// Named event kinds (NAMED_KINDS.md, QUESTIONS.md Q12). Section 2 is frozen and says the arrow
+// slot holds a decimal integer, and section 4's block above is frozen too, so this is an
+// addition in the shape stage B used rather than a change to either: a file may declare
+//
+//     kind <name> = <number>
+//
+// and then use `<name>` where a row would carry the number. The name is resolved while parsing,
+// so `Machine` is the same machine either way and a caller that does not care about names keeps
+// using the two-argument `parse` above.
+//
+// `kind_names` comes back in declaration order (the file's order, like `Machine::states`) and is
+// empty when the text declares none. `dump(machine, kind_names)` is the matching writer: it
+// emits the declarations in ascending kind order and then uses a name wherever one is declared,
+// so `dump(parse(text, error, names), names)` parses back to the same machine and the same names.
+struct KindName {
+    std::string name;
+    int kind = 0;
+};
+
+std::optional<Machine> parse(std::string_view text, Error& error,
+                             std::vector<KindName>& kind_names);
+std::string dump(const Machine& m, const std::vector<KindName>& kind_names);
+
 } // namespace fsmtable

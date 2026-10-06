@@ -116,27 +116,51 @@ bool parse_bounded_int(std::string_view token, long long lo, long long hi, long 
     return true;
 }
 
-// `--<digits>-->` as ONE token: `-- 1 -->` is an error, not a lenient parse.
-bool parse_arrow_kind(std::string_view token, int& kind) {
+// The arrow slot. `--<digits>-->` as ONE token, so `-- 1 -->` stays an error rather than a
+// lenient parse; or `--<name>-->` for a name a `kind` directive declared. Anything else — an
+// empty slot, a leading `+`, an inner token that is neither all digits nor an identifier, a
+// number out of range — is malformed, which is rule 4 unrelaxed.
+enum class KindSlot { Number, Name, Malformed };
+
+struct ArrowKind {
+    KindSlot what = KindSlot::Malformed;
+    int number = 0;        // when what == Number
+    std::string_view name; // when what == Name
+};
+
+ArrowKind read_arrow_kind(std::string_view token) {
     constexpr std::string_view prefix = "--";
     constexpr std::string_view suffix = "-->";
     if (token.size() <= prefix.size() + suffix.size())
-        return false;
+        return {};
     if (token.substr(0, prefix.size()) != prefix)
-        return false;
+        return {};
     if (token.substr(token.size() - suffix.size()) != suffix)
-        return false;
-    const std::string_view digits
+        return {};
+    const std::string_view inner
         = token.substr(prefix.size(), token.size() - prefix.size() - suffix.size());
-    for (const char c : digits) {
-        if (!is_digit(c))
-            return false;
+
+    ArrowKind slot;
+    bool all_digits = true;
+    for (const char c : inner) {
+        if (!is_digit(c)) {
+            all_digits = false;
+            break;
+        }
     }
-    long long value = 0;
-    if (!parse_bounded_int(digits, 0, 255, value))
-        return false;
-    kind = static_cast<int>(value);
-    return true;
+    if (all_digits) {
+        long long value = 0;
+        if (!parse_bounded_int(inner, 0, 255, value))
+            return {}; // rule 5: out of range, reported like any other malformed token
+        slot.what = KindSlot::Number;
+        slot.number = static_cast<int>(value);
+        return slot;
+    }
+    if (!valid_name(inner))
+        return {};
+    slot.what = KindSlot::Name;
+    slot.name = inner;
+    return slot;
 }
 
 bool parse_op(std::string_view token, Op& op) {
@@ -179,6 +203,22 @@ std::string_view op_text(Op op) {
     return "eq";
 }
 
+const KindName* find_kind_name(const std::vector<KindName>& declared, std::string_view name) {
+    for (const KindName& entry : declared) {
+        if (entry.name == name)
+            return &entry;
+    }
+    return nullptr;
+}
+
+const KindName* find_kind_number(const std::vector<KindName>& declared, int kind) {
+    for (const KindName& entry : declared) {
+        if (entry.kind == kind)
+            return &entry;
+    }
+    return nullptr;
+}
+
 void declare_state(Machine& machine, std::string_view name) {
     const auto known = std::find(machine.states.begin(), machine.states.end(), name);
     if (known == machine.states.end()) {
@@ -197,6 +237,16 @@ std::string quoted(std::string_view token) { return "'" + std::string(token) + "
 } // namespace
 
 std::optional<Machine> parse(std::string_view text, Error& error) {
+    std::vector<KindName> ignored; // the frozen two-argument form has nowhere to put them
+    return parse(text, error, ignored);
+}
+
+std::optional<Machine> parse(std::string_view text, Error& error,
+                             std::vector<KindName>& kind_names) {
+    // Cleared first, so a failure reports no names at all: the contract is that a refused file
+    // produces no machine and nothing partial to go with it.
+    kind_names.clear();
+    std::vector<KindName> declared; // declaration order, as written
     Machine machine;
     bool version_seen = false;
     bool machine_seen = false;
@@ -267,6 +317,37 @@ std::optional<Machine> parse(std::string_view text, Error& error) {
                 machine.initial = std::string(fields[1]);
                 declare_state(machine, fields[1]);
                 initial_seen = true;
+            } else if (directive == "kind") {
+                if (fields.size() < 3) {
+                    return reject(error, line_number, "kind needs a name and a number");
+                }
+                if (!valid_name(fields[1])) {
+                    return reject(error, line_number, "malformed kind name " + quoted(fields[1]));
+                }
+                if (fields[2] != "=") {
+                    return reject(error, line_number,
+                                  "expected '=' after the kind name, found " + quoted(fields[2]));
+                }
+                if (fields.size() < 4) {
+                    return reject(error, line_number, "kind needs a number after '='");
+                }
+                if (fields.size() > 4) {
+                    return reject(error, line_number,
+                                  "unexpected field " + quoted(fields[4]) + " after kind");
+                }
+                long long value = 0;
+                if (!parse_bounded_int(fields[3], 0, 255, value)) {
+                    return reject(error, line_number,
+                                  "kind value must be a number in 0..255: " + quoted(fields[3]));
+                }
+                if (find_kind_name(declared, fields[1]) != nullptr) {
+                    return reject(error, line_number, "duplicate kind name " + quoted(fields[1]));
+                }
+                if (find_kind_number(declared, static_cast<int>(value)) != nullptr) {
+                    return reject(error, line_number,
+                                  "duplicate kind number " + std::to_string(value));
+                }
+                declared.push_back(KindName{std::string(fields[1]), static_cast<int>(value)});
             } else if (directive == "transition") {
                 if (fields.size() < 4) {
                     return reject(error, line_number, "transition needs a from, a kind and a to");
@@ -275,8 +356,18 @@ std::optional<Machine> parse(std::string_view text, Error& error) {
                 if (!valid_name(from)) {
                     return reject(error, line_number, "malformed state name " + quoted(from));
                 }
+                const ArrowKind arrow = read_arrow_kind(fields[2]);
                 int kind = 0;
-                if (!parse_arrow_kind(fields[2], kind)) {
+                if (arrow.what == KindSlot::Number) {
+                    kind = arrow.number;
+                } else if (arrow.what == KindSlot::Name) {
+                    const KindName* declared_kind = find_kind_name(declared, arrow.name);
+                    if (declared_kind == nullptr) {
+                        return reject(error, line_number,
+                                      "unknown kind name " + quoted(arrow.name));
+                    }
+                    kind = declared_kind->kind;
+                } else {
                     return reject(error, line_number, "malformed kind token " + quoted(fields[2]));
                 }
                 const std::string_view to = fields[3];
@@ -367,10 +458,13 @@ std::optional<Machine> parse(std::string_view text, Error& error) {
 
     error.line = 0;
     error.message.clear();
+    kind_names = declared;
     return machine;
 }
 
-std::string dump(const Machine& machine) {
+namespace {
+
+std::string dump_with(const Machine& machine, const std::vector<KindName>& kind_names) {
     std::vector<const Transition*> rows;
     rows.reserve(machine.transitions.size());
     for (const Transition& row : machine.transitions) {
@@ -399,8 +493,30 @@ std::string dump(const Machine& machine) {
     out += "version 1\n";
     out += "machine " + machine.name + "\n";
     out += "initial " + machine.initial + "\n";
+    if (!kind_names.empty()) {
+        // Ascending by kind — canonical, so two files that declare the same names in different
+        // orders dump identically, and so the declarations are in the order the rows sort in.
+        // A name whose kind no row uses is still written: it was declared, so it is part of the
+        // file, and dropping it would make the round trip lossy.
+        std::vector<const KindName*> declared;
+        declared.reserve(kind_names.size());
+        for (const KindName& entry : kind_names) {
+            declared.push_back(&entry);
+        }
+        std::sort(declared.begin(), declared.end(), [](const KindName* a, const KindName* b) {
+            if (a->kind != b->kind)
+                return a->kind < b->kind;
+            return a->name < b->name;
+        });
+        for (const KindName* entry : declared) {
+            out += "kind " + entry->name + " = " + std::to_string(entry->kind) + "\n";
+        }
+    }
     for (const Transition* row : rows) {
-        out += "transition " + row->from + " --" + std::to_string(row->kind) + "--> " + row->to;
+        const KindName* named = find_kind_number(kind_names, row->kind);
+        out += "transition " + row->from + " --";
+        out += named == nullptr ? std::to_string(row->kind) : named->name;
+        out += "--> " + row->to;
         if (row->has_when) {
             out += " when ";
             out += op_text(row->when_op);
@@ -414,6 +530,16 @@ std::string dump(const Machine& machine) {
     return out;
 }
 
+} // namespace
+
+std::string dump(const Machine& machine) {
+    // The frozen writer: numbers only, byte for byte what it always wrote.
+    return dump_with(machine, {});
+}
+
+std::string dump(const Machine& machine, const std::vector<KindName>& kind_names) {
+    return dump_with(machine, kind_names);
+}
 namespace {
 
 // Where `name` sits in `states`, or states.size() when it is not declared there. The

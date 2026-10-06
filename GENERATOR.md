@@ -21,13 +21,23 @@ For a machine named `M` (the `.fsm`'s `machine` line), in one namespace:
 | symbol | what it is |
 | --- | --- |
 | `MState` | `enum class : std::uint16_t`, the states in first-appearance order |
-| `MKind` | `enum class : std::uint8_t`, the event kinds the rows use |
+| `MKind` | `enum class : std::uint8_t`, the event kinds: a name the `.fsm` declared, or `k<number>` when it declared none |
 | `MEvent` | `{ kind; value; }` — `kind` is what the back end reads, `value` is the format's single refinement slot |
 | `MStateNames` | `std::array<std::string_view, N>` of the state names, for logs and code → text |
 | `MNameOf` | `std::string_view (MState)`, the name function `withNames()` wants |
+| `MKindNames` | `std::array<std::pair<MKind, std::string_view>, N>` of the kind names the file declared, for logs and code → text |
+| `MKindNameOf` | `std::string_view (MKind)`, the declared name, or empty for an undeclared kind |
 | `MRows` | `constexpr std::array<fsmgine::compiled::Transition<…>, N>`, the transition table |
 | `makeM()` | a machine ready to drive, initial state set, names wired |
 | `void action(const MEvent&)` | one declaration per action the file names — you define these |
+
+Kind names come from the file. `kind tick = 1` in the `.fsm` makes the enumerator `tick` — and
+`MKindNames` gives the string back, so code → text stays possible. The generated code then reads
+in the machine's own words instead of `k1`, and the example in `examples/calculator/` no longer
+needs a block of aliases to translate between the two (NAMED_KINDS.md). A kind the file did not
+name keeps the `k<number>` spelling it always had; a kind name that is a C++ keyword is refused,
+by the same rule as a state or action name; and the fingerprint covers the *named* canonical form,
+so renaming a kind changes it.
 
 ## The two properties that make this a generator, not a pretty-printer
 
@@ -71,7 +81,6 @@ whose state name is a keyword, and one shape check on the emitted table of the s
 
 Useful, and each one is a format decision before it is a generator change:
 
-* named event kinds — today `--1-->` is a raw 0..255 number, emitted as `k1`;
 * entry and exit actions per state;
 * parameterised actions, or a named registry instead of one function per action;
 * more than one refinement slot, i.e. richer predicates than one `int` comparison;

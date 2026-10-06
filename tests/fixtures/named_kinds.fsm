@@ -1,0 +1,10 @@
+version 1
+machine Named
+initial Idle
+kind tick = 1
+kind stop = 2
+kind reset = 7
+transition Idle --tick--> Running action on_tick
+transition Running --tick--> Running when ge 3
+transition Running --stop--> Idle
+transition Idle --3--> Idle when ge 5

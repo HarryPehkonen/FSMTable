@@ -119,7 +119,8 @@ if(FSMTABLE_BUILD_TESTS)
         corpus/traffic_light.fsm
         corpus/guarded.fsm
         corpus/minimal.fsm
-        tests/fixtures/refined_pair.fsm)
+        tests/fixtures/refined_pair.fsm
+        tests/fixtures/named_kinds.fsm)
     set(FSMTABLE_GENERATED_HEADERS "")
     foreach(fsm IN LISTS FSMTABLE_GENERATOR_INPUTS)
         get_filename_component(stem "${fsm}" NAME_WE)
@@ -168,6 +169,13 @@ if(FSMTABLE_BUILD_TESTS)
 
     # The end-to-end session: the executable, fed lines, compared line for line. Piped
     # stdin is not a terminal, so no prompt appears in the expected output.
+    # Named event kinds (NAMED_KINDS.md): its own binary, so the frozen test target keeps the
+    # exact composition the spec froze.
+    add_executable(fsmTable_kinds_tests tests/kinds_test.cpp)
+    target_link_libraries(fsmTable_kinds_tests PRIVATE fsmTable GTest::gtest_main)
+    target_compile_options(fsmTable_kinds_tests PRIVATE ${FSMTABLE_WARNINGS})
+    add_test(NAME fsmTable_kinds_tests COMMAND fsmTable_kinds_tests)
+
     add_test(NAME calculator_session
         COMMAND sh -c "\"$<TARGET_FILE:calculator>\" < \"${FSMTABLE_CALCULATOR_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_CALCULATOR_DIR}/input/session.expected\" -")
 endif()

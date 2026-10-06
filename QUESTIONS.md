@@ -190,3 +190,19 @@ example is single-threaded, which the tsan stage checks for it as well as for th
 row a literal type but threads the caller's state through the back end explicitly. The
 interpreted back end already offers the other answer: `std::function` actions can capture,
 at the cost of the table's shape on the hot path.
+
+## Q12 — Must a `kind` name be declared before the row that uses it?
+
+Named event kinds are the one addition to the reader (NAMED_KINDS.md). The declaration could be
+resolved in a second pass, the way `machine` and `initial` may appear after the transitions (Q2),
+which would let a file declare its kinds at the bottom.
+
+**Reading taken:** the declaration comes first. One pass, so that the row that is wrong is the row
+that gets the line number — ``unknown kind name 'tick'`` pointing at line 4 is the message that
+fixes the file, and a two-pass reader would have to keep a list of pending uses only to report that
+same line at the end. The cost is one line of ordering in a file whose kinds are naturally written
+at the top anyway.
+
+**The alternative:** resolve in a second pass and report the use's line, matching Q2's ordering
+freedom. It costs the pending-use list and buys nothing that a declarations block at the top does
+not already give.

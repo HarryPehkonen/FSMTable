@@ -25,7 +25,12 @@ struct Outcome {
     std::string message; // the text after "error: ", empty otherwise
 };
 
-using Token = std::pair<fsmtable_generated::CalculatorKind, int>;
+// The generated kind enum under the name this example uses for it. `EventKind`, not `Kind`,
+// because `Outcome` has a `Kind` of its own. The enumerators are the .fsm's own `kind`
+// declarations, so `EventKind::add` is the file's word for kind 2 — nothing here has to be
+// kept in step with the machine by hand (NAMED_KINDS.md).
+using EventKind = fsmtable_generated::CalculatorKind;
+using Token = std::pair<EventKind, int>;
 
 // The numbers. The machine tracks what is legal and which operator is pending; this holds the
 // running value and any arithmetic failure, because no row can hold a number.

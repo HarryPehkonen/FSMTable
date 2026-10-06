@@ -5,13 +5,10 @@
 # elsewhere (calculator.cpp): no row can hold one, because a `when` clause compares one int
 # that rides on the event (SPEC.md section 3).
 #
-# Kinds — the format names events by number, so this comment is the name table
-# (GENERATOR.md, "Not here yet", item 1):
-#   1 Number   value = the operand, 0 .. 2147483647 (never negative: `-` is always the
-#              subtraction OPERATOR here, so `0 - 5` rather than `-5`)
-#   2 Add    3 Sub    4 Mul    5 Div
-#   6 Equals   end of the line: print what is held
-#   7 Clear    start of a new line: forget everything
+# The kinds are declared by name below — the name table is the file's own declarations.
+# One kind carries a value: `number`, whose value is the operand, 0 .. 2147483647 (never
+# negative: `-` is always the subtraction OPERATOR here, so `0 - 5` rather than `-5`).
+# `equals` ends the line: print what is held. `clear` starts a new one.
 #
 # Enter (`Equals`) is deliberately absent from every `Pending*` state: `12 +` is not in this
 # machine's language, so the shell says so instead of inventing a value.
@@ -19,44 +16,54 @@ version 1
 machine Calculator
 initial Entry
 
+# The event kinds, by name. The numbers are what the rows below used to carry: a
+# name is another spelling for the same number, so nothing else in the file changed.
+kind number = 1
+kind add = 2
+kind sub = 3
+kind mul = 4
+kind div = 5
+kind equals = 6
+kind clear = 7
+
 # The first operand of a line.
-transition Entry --1--> Accum action take_operand
-transition Entry --7--> Entry action clear_all
+transition Entry --number--> Accum action take_operand
+transition Entry --clear--> Entry action clear_all
 
 # An operator does not need an action to record itself: the state it moves to IS the operator.
-transition Accum --2--> PendingAdd
-transition Accum --3--> PendingSub
-transition Accum --4--> PendingMul
-transition Accum --5--> PendingDiv
-transition Accum --6--> Accum
+transition Accum --add--> PendingAdd
+transition Accum --sub--> PendingSub
+transition Accum --mul--> PendingMul
+transition Accum --div--> PendingDiv
+transition Accum --equals--> Accum
 # No action on the Equals rows: the shell prints what the registers hold, and an action
 # that does nothing is one that should not be named. The state stops where the line
 # finished rather than returning to Entry — Clear does that, at the start of the next
 # line — so the state a finished line leaves behind says how it ended.
-transition Accum --7--> Entry action clear_all
+transition Accum --clear--> Entry action clear_all
 
 # A number with an operator waiting: the arithmetic runs in the action, which reads the
 # operand from the event and the running value from the registers.
-transition PendingAdd --1--> Accum action add_operand
-transition PendingSub --1--> Accum action sub_operand
-transition PendingMul --1--> Accum action mul_operand
-transition PendingAdd --7--> Entry action clear_all
-transition PendingSub --7--> Entry action clear_all
-transition PendingMul --7--> Entry action clear_all
+transition PendingAdd --number--> Accum action add_operand
+transition PendingSub --number--> Accum action sub_operand
+transition PendingMul --number--> Accum action mul_operand
+transition PendingAdd --clear--> Entry action clear_all
+transition PendingSub --clear--> Entry action clear_all
+transition PendingMul --clear--> Entry action clear_all
 
 # Division by zero is a ROW, not a register check: the divisor is this event's value and the
 # pending operator is a state, so a guard can see what it needs. The generator emits the
 # guarded row first, which is what makes `x / 0` reachable at all.
-transition PendingDiv --1--> Error when eq 0 action note_division_by_zero
-transition PendingDiv --1--> Accum action div_operand
-transition PendingDiv --7--> Entry action clear_all
+transition PendingDiv --number--> Error when eq 0 action note_division_by_zero
+transition PendingDiv --number--> Accum action div_operand
+transition PendingDiv --clear--> Entry action clear_all
 
 # The error state is TOTAL over the rest of the line on purpose: if a token were refused here
 # instead, the shell would report "unexpected operator" and hide the division that caused it.
-transition Error --1--> Error
-transition Error --2--> Error
-transition Error --3--> Error
-transition Error --4--> Error
-transition Error --5--> Error
-transition Error --6--> Error
-transition Error --7--> Entry action clear_all
+transition Error --number--> Error
+transition Error --add--> Error
+transition Error --sub--> Error
+transition Error --mul--> Error
+transition Error --div--> Error
+transition Error --equals--> Error
+transition Error --clear--> Entry action clear_all

@@ -12,6 +12,7 @@
 // QUESTIONS.md Q5 records) and holds the compiled artifacts to it.
 #include "fsm_guarded.hpp"
 #include "fsm_minimal.hpp"
+#include "fsm_named_kinds.hpp"
 #include "fsm_refined_pair.hpp"
 #include "fsm_traffic_light.hpp"
 
@@ -257,6 +258,8 @@ void on_red_green(const TrafficLightEvent& /*event*/) { log().push_back("on_red_
 
 void high(const RefinedPairEvent& /*event*/) { log().push_back("high"); }
 
+void on_tick(const NamedEvent& /*event*/) { log().push_back("on_tick"); }
+
 } // namespace fsmtable_generated
 
 // -------------------------------------------------------------------------------- the tests
@@ -379,6 +382,51 @@ TEST(Generated, TheGuardedRowIsEmittedFirstAndWins) {
     EXPECT_EQ(machine.currentStateName(), "C") << "10 satisfies `ge 10`: the refinement applies";
     ASSERT_EQ(log().size(), 1U);
     EXPECT_EQ(log()[0], "high");
+}
+
+TEST(Generated, NamedKindsBecomeNamedEnumeratorsAndAReversibleTable) {
+    // NAMED_KINDS.md's payoff. `reset` is declared and no row uses it: it is still an enumerator,
+    // because a declaration is part of the file. `k3` is the other case — a kind no directive
+    // named, which keeps the spelling the generator has always used.
+    EXPECT_EQ(static_cast<int>(fsmtable_generated::NamedKind::tick), 1);
+    EXPECT_EQ(static_cast<int>(fsmtable_generated::NamedKind::stop), 2);
+    EXPECT_EQ(static_cast<int>(fsmtable_generated::NamedKind::k3), 3);
+    EXPECT_EQ(static_cast<int>(fsmtable_generated::NamedKind::reset), 7);
+
+    EXPECT_EQ(fsmtable_generated::NamedKindNameOf(fsmtable_generated::NamedKind::tick), "tick");
+    EXPECT_EQ(fsmtable_generated::NamedKindNameOf(fsmtable_generated::NamedKind::reset), "reset");
+    EXPECT_TRUE(fsmtable_generated::NamedKindNameOf(fsmtable_generated::NamedKind::k3).empty())
+        << "an undeclared kind must not be given an invented name";
+    EXPECT_EQ(fsmtable_generated::NamedKindNames.size(), 3U);
+
+    // The round trip that matters: a name the generator hands back has to be a name the format
+    // accepts in, or code -> text is a one-way door.
+    for (const std::pair<fsmtable_generated::NamedKind, std::string_view>& entry :
+         fsmtable_generated::NamedKindNames) {
+        const std::string name(entry.second);
+        const std::string kind_text = std::to_string(static_cast<int>(entry.first));
+        const std::string back = "version 1\nmachine M\ninitial A\nkind " + name + " = " + kind_text
+                                 + "\ntransition A --" + name + "--> A\n";
+        fsmtable::Error error{0, ""};
+        std::vector<fsmtable::KindName> names;
+        EXPECT_TRUE(fsmtable::parse(back, error, names).has_value())
+            << "'" << name << "', which came out of the generator, was refused at line "
+            << error.line << ": " << error.message;
+    }
+}
+
+TEST(Generated, ANamedMachineRunsThroughItsOwnKindNames) {
+    const fsmtable::Machine parsed = parse_text(fixture("named_kinds.fsm"));
+    std::mt19937 rng(14);
+    auto machine = fsmtable_generated::makeNamed();
+    const auto events = make_events<fsmtable_generated::NamedEvent, fsmtable_generated::NamedKind>(
+        parsed, rng, 400);
+    log().clear();
+    const Trace generated = drive(machine, events);
+    const std::vector<std::string> actions = log();
+    expect_agrees("tests/fixtures/named_kinds.fsm",
+                  reference_trace(parsed, as_reference_events(events)), actions, generated);
+    EXPECT_FALSE(actions.empty()) << "on_tick never ran: the named row is untested";
 }
 
 TEST(Generated, TheEmptyMachineIsGeneratedAndNeverMoves) {

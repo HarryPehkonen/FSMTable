@@ -11,6 +11,8 @@
 
 namespace {
 
+using calc::EventKind;
+
 // The actions reach the registers through this pointer, installed by Shell::run_line for the
 // duration of one line and cleared afterwards. The compiled back end's action type is
 // void (*)(const Event&) — no context parameter — so this is the only route (QUESTIONS.md Q11).
@@ -19,15 +21,8 @@ namespace {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 calc::Registers* g_registers = nullptr;
 
-// The machine names its events by number (GENERATOR.md, "Not here yet", item 1). Naming them
-// once, here, is the entire cost of that in this example.
-constexpr auto kNumber = fsmtable_generated::CalculatorKind::k1;
-constexpr auto kAdd = fsmtable_generated::CalculatorKind::k2;
-constexpr auto kSub = fsmtable_generated::CalculatorKind::k3;
-constexpr auto kMul = fsmtable_generated::CalculatorKind::k4;
-constexpr auto kDiv = fsmtable_generated::CalculatorKind::k5;
-constexpr auto kEquals = fsmtable_generated::CalculatorKind::k6;
-constexpr auto kClear = fsmtable_generated::CalculatorKind::k7;
+// The kinds are named in the .fsm, so there is nothing to alias here: `EventKind` and its
+// enumerators come straight from the generated header (NAMED_KINDS.md).
 
 fsmtable_generated::CalculatorEvent event_for(fsmtable_generated::CalculatorKind kind, int value) {
     fsmtable_generated::CalculatorEvent event{};
@@ -39,17 +34,17 @@ fsmtable_generated::CalculatorEvent event_for(fsmtable_generated::CalculatorKind
 // How a refused token is described to the person who typed it.
 std::string describe(const calc::Token& token) {
     switch (token.first) {
-    case kNumber:
+    case EventKind::number:
         return "number " + std::to_string(token.second);
-    case kAdd:
+    case EventKind::add:
         return "operator +";
-    case kSub:
+    case EventKind::sub:
         return "operator -";
-    case kMul:
+    case EventKind::mul:
         return "operator *";
-    case kDiv:
+    case EventKind::div:
         return "operator /";
-    case kEquals:
+    case EventKind::equals:
         return "end of line";
     default:
         return "token";
@@ -60,7 +55,7 @@ std::string describe(const calc::Token& token) {
 // they name. They are four one-line actions rather than one that switches on the event's kind
 // because the format has no action parameters (v2 item 3) and because the .fsm should read like
 // the grammar.
-void apply(fsmtable_generated::CalculatorKind op, int operand) {
+void apply(EventKind op, int operand) {
     calc::Registers& registers = calc::registers();
     if (!registers.error.empty()) {
         return; // a line that has already failed stays failed
@@ -69,19 +64,19 @@ void apply(fsmtable_generated::CalculatorKind op, int operand) {
     long long result = 0;
     bool overflow = false;
     switch (op) {
-    case kAdd:
+    case EventKind::add:
         overflow
             = __builtin_add_overflow(registers.value, static_cast<long long>(operand), &result);
         break;
-    case kSub:
+    case EventKind::sub:
         overflow
             = __builtin_sub_overflow(registers.value, static_cast<long long>(operand), &result);
         break;
-    case kMul:
+    case EventKind::mul:
         overflow
             = __builtin_mul_overflow(registers.value, static_cast<long long>(operand), &result);
         break;
-    case kDiv:
+    case EventKind::div:
         if (operand == 0) {
             // The machine routes a zero divisor to Error before this can run, so this is the
             // arithmetic layer's own invariant rather than the format's (QUESTIONS.md Q10).
@@ -140,22 +135,22 @@ bool tokenise(std::string_view line, std::vector<Token>& tokens, std::string& er
                 error = "number out of range";
                 return false;
             }
-            tokens.emplace_back(kNumber, static_cast<int>(value));
+            tokens.emplace_back(EventKind::number, static_cast<int>(value));
             i = end;
             continue;
         }
         switch (c) {
         case '+':
-            tokens.emplace_back(kAdd, 0);
+            tokens.emplace_back(EventKind::add, 0);
             break;
         case '-':
-            tokens.emplace_back(kSub, 0);
+            tokens.emplace_back(EventKind::sub, 0);
             break;
         case '*':
-            tokens.emplace_back(kMul, 0);
+            tokens.emplace_back(EventKind::mul, 0);
             break;
         case '/':
-            tokens.emplace_back(kDiv, 0);
+            tokens.emplace_back(EventKind::div, 0);
             break;
         default:
             error = "unexpected character '" + std::string(1, c) + "' at column "
@@ -181,7 +176,7 @@ Outcome Shell::run_line(std::string_view line) {
     // Clear runs at the START of a line rather than at the end of the previous one,
     // so the state the machine is left in is the state this line reached — which is
     // what the tests (and anyone embedding this) can observe.
-    machine_.process(event_for(kClear, 0));
+    machine_.process(event_for(EventKind::clear, 0));
 
     if (readable && !blank) {
         for (const Token& token : tokens) {
@@ -192,7 +187,7 @@ Outcome Shell::run_line(std::string_view line) {
                 break;
             }
         }
-        if (failure.empty() && !machine_.process(event_for(kEquals, 0))) {
+        if (failure.empty() && !machine_.process(event_for(EventKind::equals, 0))) {
             failure = "incomplete expression"; // `12 +`: Equals has no row in a Pending* state
         }
     }
@@ -227,13 +222,13 @@ void take_operand(const CalculatorEvent& event) {
     registers.has_value = true;
 }
 
-void add_operand(const CalculatorEvent& event) { apply(kAdd, event.value); }
+void add_operand(const CalculatorEvent& event) { apply(EventKind::add, event.value); }
 
-void sub_operand(const CalculatorEvent& event) { apply(kSub, event.value); }
+void sub_operand(const CalculatorEvent& event) { apply(EventKind::sub, event.value); }
 
-void mul_operand(const CalculatorEvent& event) { apply(kMul, event.value); }
+void mul_operand(const CalculatorEvent& event) { apply(EventKind::mul, event.value); }
 
-void div_operand(const CalculatorEvent& event) { apply(kDiv, event.value); }
+void div_operand(const CalculatorEvent& event) { apply(EventKind::div, event.value); }
 
 void note_division_by_zero(const CalculatorEvent& /*event*/) {
     calc::registers().error = "division by zero";
