@@ -186,6 +186,12 @@ cleared when the line ends (`calc::install` in the example). The lifetime is one
 is what makes it safe to reason about: nothing outside a line can observe it, and the
 example is single-threaded, which the tsan stage checks for it as well as for the library.
 
+**The trap in it:** the pointer is per-thread global, not per-machine. Anything else running on
+the same thread between the install and the clear can see it, and a machine driven from inside
+another machine's action finds it already replaced — one machine per thread, with nothing but the
+event in between, is part of the pattern rather than a detail of the examples. FSMgine's README
+states the same reading from the library's side, under "Thread safety".
+
 **The alternative:** a context parameter in the action type
 (`void (*)(void* context, const Event&)`, the shape libuv's callbacks use), which keeps the
 row a literal type but threads the caller's state through the back end explicitly. The
