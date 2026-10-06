@@ -39,14 +39,33 @@ constexpr std::string_view kNumeric = "version 1\n"
                                       "transition Green --2--> Yellow\n"
                                       "transition Yellow --1--> Red when ge 30\n";
 
-// Parses and requires success. A failure is reported with the parser's own line and message,
-// which is the part a reader needs, rather than as a bare "no value".
-Machine parse_ok(std::string_view text) {
+// Parses and requires success. The unwrap happens here and nowhere else, visibly guarded:
+// gtest's ASSERT_* does not teach clang-tidy's bugprone-unchecked-optional-access anything about
+// an optional (tests/parser_test.cpp says the same where it unwraps one), so every test in this
+// file goes through these two functions instead of touching a `std::optional` itself.
+struct Parsed {
+    Machine machine;
+    std::vector<KindName> names;
+};
+
+Parsed parse_ok(std::string_view text) {
     Error error{0, ""};
     std::vector<KindName> names;
     auto machine = fsmtable::parse(text, error, names);
     if (!machine.has_value()) {
         ADD_FAILURE() << "parse failed at line " << error.line << ": " << error.message;
+        return Parsed{Machine{}, {}};
+    }
+    return Parsed{*machine, names};
+}
+
+// The frozen two-argument form, for the test that holds it to the same machine.
+Machine frozen_parse_ok(std::string_view text) {
+    Error error{0, ""};
+    auto machine = fsmtable::parse(text, error);
+    if (!machine.has_value()) {
+        ADD_FAILURE() << "the two-argument parse failed at line " << error.line << ": "
+                      << error.message;
         return Machine{};
     }
     return *machine;
@@ -74,56 +93,40 @@ std::vector<KindName> sorted(std::vector<KindName> names) {
 }
 
 TEST(NamedKinds, ResolvesADeclaredNameToItsNumber) {
-    Error error{0, ""};
-    std::vector<KindName> names;
-    const auto machine = fsmtable::parse(kNamed, error, names);
-    ASSERT_TRUE(machine.has_value()) << error.line << ": " << error.message;
+    const Parsed parsed = parse_ok(kNamed);
 
     // Declaration order — the file's order, like `states` — not the numeric order.
-    ASSERT_EQ(names.size(), 2U);
-    EXPECT_EQ(names[0].name, "warn");
-    EXPECT_EQ(names[0].kind, 2);
-    EXPECT_EQ(names[1].name, "advance");
-    EXPECT_EQ(names[1].kind, 1);
+    ASSERT_EQ(parsed.names.size(), 2U);
+    EXPECT_EQ(parsed.names[0].name, "warn");
+    EXPECT_EQ(parsed.names[0].kind, 2);
+    EXPECT_EQ(parsed.names[1].name, "advance");
+    EXPECT_EQ(parsed.names[1].kind, 1);
 
-    ASSERT_EQ(machine->transitions.size(), 3U);
-    EXPECT_EQ(machine->transitions[0].kind, 1); // Red --advance-->
-    EXPECT_EQ(machine->transitions[1].kind, 2); // Green --warn-->
-    EXPECT_EQ(machine->transitions[2].kind, 1); // Yellow --advance-->
+    ASSERT_EQ(parsed.machine.transitions.size(), 3U);
+    EXPECT_EQ(parsed.machine.transitions[0].kind, 1); // Red --advance-->
+    EXPECT_EQ(parsed.machine.transitions[1].kind, 2); // Green --warn-->
+    EXPECT_EQ(parsed.machine.transitions[2].kind, 1); // Yellow --advance-->
 }
 
 TEST(NamedKinds, ANameAndItsNumberAreTheSameMachine) {
-    const Machine named = parse_ok(kNamed);
-    const Machine numeric = parse_ok(kNumeric);
-    EXPECT_EQ(fsmtable::dump(named), fsmtable::dump(numeric));
-
-    Error error{0, ""};
-    std::vector<KindName> names;
-    const auto parsed = fsmtable::parse(kNumeric, error, names);
-    ASSERT_TRUE(parsed.has_value());
-    EXPECT_TRUE(names.empty()) << "a file that declares no names must report none";
+    EXPECT_EQ(fsmtable::dump(parse_ok(kNamed).machine), fsmtable::dump(parse_ok(kNumeric).machine));
+    EXPECT_TRUE(parse_ok(kNumeric).names.empty())
+        << "a file that declares no names must report none";
 }
 
 TEST(NamedKinds, TheFrozenParseSeesTheSameMachine) {
-    Error error{0, ""};
-    const auto machine = fsmtable::parse(kNamed, error); // the two-argument form, unchanged
-    ASSERT_TRUE(machine.has_value()) << error.line << ": " << error.message;
-    EXPECT_EQ(fsmtable::dump(*machine), fsmtable::dump(parse_ok(kNamed)));
+    EXPECT_EQ(fsmtable::dump(frozen_parse_ok(kNamed)), fsmtable::dump(parse_ok(kNamed).machine));
 }
 
 TEST(NamedKinds, TheFrozenDumpWritesNumbers) {
-    const Machine machine = parse_ok(kNamed);
-    const std::string dumped = fsmtable::dump(machine);
+    const std::string dumped = fsmtable::dump(parse_ok(kNamed).machine);
     EXPECT_EQ(dumped.find("kind "), std::string::npos) << dumped;
     EXPECT_NE(dumped.find("transition Red --1--> Green"), std::string::npos) << dumped;
 }
 
 TEST(NamedKinds, DumpWritesTheDeclarationsAndTheNames) {
-    Error error{0, ""};
-    std::vector<KindName> names;
-    const auto machine = fsmtable::parse(kNamed, error, names);
-    ASSERT_TRUE(machine.has_value());
-    const std::string dumped = fsmtable::dump(*machine, names);
+    const Parsed parsed = parse_ok(kNamed);
+    const std::string dumped = fsmtable::dump(parsed.machine, parsed.names);
 
     // Declarations first, ascending by number: a canonical order, so that two files declaring the
     // same names in different orders dump identically.
@@ -143,32 +146,24 @@ TEST(NamedKinds, AnUndeclaredNumberStillDumpsAsANumber) {
                                         "kind tick = 1\n"
                                         "transition A --tick--> B\n"
                                         "transition A --3--> B when ge 2\n";
-    Error error{0, ""};
-    std::vector<KindName> names;
-    const auto machine = fsmtable::parse(kMixed, error, names);
-    ASSERT_TRUE(machine.has_value()) << error.line << ": " << error.message;
-    const std::string dumped = fsmtable::dump(*machine, names);
+    const Parsed parsed = parse_ok(kMixed);
+    const std::string dumped = fsmtable::dump(parsed.machine, parsed.names);
     EXPECT_NE(dumped.find("kind tick = 1\n"), std::string::npos) << dumped;
     EXPECT_NE(dumped.find("transition A --tick--> B\n"), std::string::npos) << dumped;
     EXPECT_NE(dumped.find("transition A --3--> B when ge 2\n"), std::string::npos) << dumped;
 }
 
 TEST(NamedKinds, DumpParseDumpIsStableWithNames) {
-    Error error{0, ""};
-    std::vector<KindName> names;
-    const auto once = fsmtable::parse(kNamed, error, names);
-    ASSERT_TRUE(once.has_value());
-    const std::string first = fsmtable::dump(*once, names);
+    const Parsed once = parse_ok(kNamed);
+    const std::string first = fsmtable::dump(once.machine, once.names);
 
-    std::vector<KindName> again;
-    const auto twice = fsmtable::parse(first, error, again);
-    ASSERT_TRUE(twice.has_value()) << error.line << ": " << error.message;
-    EXPECT_EQ(fsmtable::dump(*twice, again), first);
+    const Parsed twice = parse_ok(first);
+    EXPECT_EQ(fsmtable::dump(twice.machine, twice.names), first);
 
     // The names survive too. They come back in the dumped order, so compare them as sets:
     // declaration order in, kind order out (which is what makes the dump canonical).
-    const std::vector<KindName> before = sorted(names);
-    const std::vector<KindName> after = sorted(again);
+    const std::vector<KindName> before = sorted(once.names);
+    const std::vector<KindName> after = sorted(twice.names);
     ASSERT_EQ(after.size(), before.size());
     for (std::size_t i = 0; i < before.size(); ++i) {
         EXPECT_EQ(after[i].name, before[i].name);

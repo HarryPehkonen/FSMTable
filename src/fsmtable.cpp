@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <set>
 #include <string>
@@ -120,7 +121,7 @@ bool parse_bounded_int(std::string_view token, long long lo, long long hi, long 
 // lenient parse; or `--<name>-->` for a name a `kind` directive declared. Anything else — an
 // empty slot, a leading `+`, an inner token that is neither all digits nor an identifier, a
 // number out of range — is malformed, which is rule 4 unrelaxed.
-enum class KindSlot { Number, Name, Malformed };
+enum class KindSlot : std::uint8_t { Number, Name, Malformed };
 
 struct ArrowKind {
     KindSlot what = KindSlot::Malformed;

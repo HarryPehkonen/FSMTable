@@ -405,8 +405,13 @@ TEST(Generated, NamedKindsBecomeNamedEnumeratorsAndAReversibleTable) {
          fsmtable_generated::NamedKindNames) {
         const std::string name(entry.second);
         const std::string kind_text = std::to_string(static_cast<int>(entry.first));
-        const std::string back = "version 1\nmachine M\ninitial A\nkind " + name + " = " + kind_text
-                                 + "\ntransition A --" + name + "--> A\n";
+        std::string back = "version 1\nmachine M\ninitial A\nkind ";
+        back += name;
+        back += " = ";
+        back += kind_text;
+        back += "\ntransition A --";
+        back += name;
+        back += "--> A\n";
         fsmtable::Error error{0, ""};
         std::vector<fsmtable::KindName> names;
         EXPECT_TRUE(fsmtable::parse(back, error, names).has_value())
