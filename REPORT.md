@@ -137,3 +137,30 @@ What the second round exercised that the first could not:
     clock and the retry budget are the driver's), an external self-transition (so a state's clauses
     re-run on a tick that stays put) and no internal transition (so `Established` cannot carry an
     entry clause). `examples/protocol/README.md` states each one beside its workaround.
+
+
+## Appendix — the document checkers
+
+Two tools keep this repository's documentation honest, and each is a ctest case, so both run in the
+`tests` stage and again against the `pristine` archive:
+
+    tool                        what it re-derives                added in
+    tools/check-doc-links.sh    every relative link resolves      b377eb3
+    tools/check-doc-claims.sh   every count, output and recipe      ed297d8
+
+Claims, not links, are the ones that went wrong: two false statements reached shipped documentation
+in two days — a link to the Kit's `DESIGN-NOTES.md`, which this repository does not have, and a
+"dead guard" analysis that rule 9's ordering makes impossible. The second tool re-derives the rest
+from the tools themselves, and it found three more on its first run: `calculator.fsm` had no final
+newline, so the README's append recipe glued the block onto its last row and the generator refused
+it; the inspector's tree recipe left out the corpus's deliberately invalid files and its own
+`dirty.fsm`; and the check itself passed its canonical-form case against the shell's own error
+message, because a relative tool path stopped resolving the moment it changed directory. Each was
+fixed in the file it belonged to, and the check's teeth are proved by sabotage on three claim
+families — a wrong count, a name that does not exist, and a stale output line.
+
+    Gate verdict line for that commit (verbatim):
+    all 12 stage(s) passed in 122s
+    GATE PASSED
+    Both lines are from the run on commit ed297d8; this file is the only difference from that tree, and
+    the run was repeated after it was added.
