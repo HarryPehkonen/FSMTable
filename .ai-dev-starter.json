@@ -1,0 +1,92 @@
+{
+  "kit": "AI-DEV-STARTER",
+  "url": "https://github.com/HarryPehkonen/AI-DEV-STARTER",
+  "revision": "d888e29a558415973abf6e5700450b7ef447afe7",
+  "recorded_at": "2026-10-06",
+  "record_kind": "retroactive",
+  "record_note": "Written 2026-10-06, after the fact: this repo was wired by hand from the kit's C++ templates (first commit d27b5a5, the Stage-A scaffold) before this record existed, so `revision` is NOT the exact copy point \u2014 it is the newest kit commit any recorded file was taken from (d888e29, the hook-tier fix), and the earlier entries came from kit revisions between then and now. Kind is `retroactive` for that reason. The two fixes in `adopted_fixes` are the two probes this copy carries; every other kit fix is neither claimed nor declined, which the record checker reports with the result of running the kit's probe against this gate \u2014 silence is not a claim. Rule that keeps this file true: any commit that edits a copied artifact updates that artifact's repo_sha256 in the same commit, and a commit that moves `revision` re-reads every kit_sha256. On 2026-10-06 the carried copy of tools/kit-probes/gitignore-footprint.sh was replaced with the kit's verbatim probe at 742ee17 (the probe that derives the footprint list from the gate under test) \u2014 the copy this repo had was hand-adapted, which a claim cannot prove. Its `from_revision` names that probe's own revision for the same reason; the recipe it guards came from acced82 (D15).",
+  "adopted_fixes": [
+    {
+      "name": "gitignore-footprint",
+      "from_revision": "742ee17fd9d7fce5a95b81e283b1254dfb1d9d60",
+      "probe": "probes/gitignore-footprint.sh",
+      "adopted_in": "d27b5a5"
+    },
+    {
+      "name": "hook-tiers-agree",
+      "from_revision": "d888e29a558415973abf6e5700450b7ef447afe7",
+      "probe": "probes/hook-tiers-agree.sh",
+      "adopted_in": "695eb3d"
+    }
+  ],
+  "files": [
+    {
+      "repo_path": "tools/ci.sh",
+      "kit_path": "templates/cpp/ci.sh",
+      "repo_sha256": "68aa76c4fc2fd0b89cc6efae3ee2336a3c7fd2833412e3b00b479bb736fd4458",
+      "kit_sha256": "da4c8a4085b06f2e710ca36a8c4818cf417875633706d7ea78014789c6544021",
+      "adapted": true,
+      "adapted_why": "stages ADDED to the kit's template: fuzz (the libFuzzer stage SPEC.md requires) and lint, the spec's name for the tidy stage this gate calls `tidy`; the tidy baseline comparison is the kit's current tidy_key form. Since 2026-10-06 the two hook tiers are CI_FAST_STAGES/CI_FULL_STAGES (kit d888e29). Its header lists the deviations, so a sync should diff this file, never overwrite it."
+    },
+    {
+      "repo_path": "tools/release.sh",
+      "kit_path": "templates/cpp/release.sh",
+      "repo_sha256": "481cf0aca0c82a6593f734a548d520ff8668901b21f92b46edc3c9c28a2b6b8c",
+      "kit_sha256": "481cf0aca0c82a6593f734a548d520ff8668901b21f92b46edc3c9c28a2b6b8c",
+      "adapted": false
+    },
+    {
+      "repo_path": ".githooks/pre-commit",
+      "kit_path": "templates/hooks/pre-commit",
+      "repo_sha256": "a103006659d79f15077faeabca37f6a9e2ac3bc677a51c7d7e0209b956fb3d12",
+      "kit_sha256": "c87ea669b3716917a8de098697107b2afe867fbbdd519d5db68ce077f24e445e",
+      "adapted": true,
+      "adapted_why": "kit script with this repo's measured order and a fast tier of `format build tests`; since 2026-10-06 it names the tier instead of a stage list."
+    },
+    {
+      "repo_path": ".githooks/pre-push",
+      "kit_path": "templates/hooks/pre-push",
+      "repo_sha256": "ac5f2e2038a2a15cb2e7ac6a2bb117572328fb27a7b4bc337ea13a0685cdb8b3",
+      "kit_sha256": "ad7380d39fc6c425d2ced5972be828832f704d395fbd17d3676768bfa33dcf10",
+      "adapted": true,
+      "adapted_why": "kit script with this repo's full tier, named as the tier (`--require-clean full`) since 2026-10-06; the reason a repo's list is its own is in its header."
+    },
+    {
+      "repo_path": ".ci.env.example",
+      "kit_path": "templates/cpp/.ci.env.example",
+      "repo_sha256": "eee5264aaa1b120fcd76685879559aae15bbf0fe39c45cfb0c4726d026709556",
+      "kit_sha256": "eee5264aaa1b120fcd76685879559aae15bbf0fe39c45cfb0c4726d026709556",
+      "adapted": false
+    },
+    {
+      "repo_path": "INCIDENTS.md",
+      "kit_path": "INCIDENTS.md",
+      "repo_sha256": "d330b57d1f5d2687540e1bb6c4c1c316dfe6b281d655afc78a777bdc0fbd71f3",
+      "kit_sha256": "e6e636dbdd3e26c727aff5045c8d50427d79c41011b0c6ace1172e76ca099e0f",
+      "adapted": true,
+      "adapted_why": "this repo's own log, created 2026-10-06 because the copied hooks ask for it; the kit's file is the kit's history, not this repo's."
+    },
+    {
+      "repo_path": ".gitignore",
+      "kit_path": ".gitignore",
+      "repo_sha256": "3d6e9470697c7355d448795b0e0d204df7b54f98832793fa960e10072f2e6589",
+      "kit_sha256": "47219f5906c1835982a9bea4f0802e9f9b0c97cba48aca3946cbaad18d488fcf",
+      "adapted": true,
+      "adapted_why": "the kit's slash-free gate-footprint recipe (D15) plus this repo's own entries; the recipe is what gitignore-footprint guards."
+    },
+    {
+      "repo_path": "tools/kit-probes/gitignore-footprint.sh",
+      "kit_path": "probes/gitignore-footprint.sh",
+      "repo_sha256": "c82f39600ababb150353543f57b334f8f0c6fa50620b988e7d930927ee7e3fd9",
+      "kit_sha256": "c82f39600ababb150353543f57b334f8f0c6fa50620b988e7d930927ee7e3fd9",
+      "adapted": false
+    },
+    {
+      "repo_path": "tools/kit-probes/hook-tiers-agree.sh",
+      "kit_path": "probes/hook-tiers-agree.sh",
+      "repo_sha256": "0977d28832f3b18f08ba0b8a87423c9ab5df19939f93ab0474d8fd88ff2bf29c",
+      "kit_sha256": "0977d28832f3b18f08ba0b8a87423c9ab5df19939f93ab0474d8fd88ff2bf29c",
+      "adapted": false
+    }
+  ]
+}
