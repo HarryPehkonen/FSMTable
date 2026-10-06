@@ -1,56 +1,69 @@
-# REPORT.md — fsmTable, stages A and B
+# REPORT.md — fsmTable, stages A, B and C
 
     Gate verdict line (verbatim):
-    all 12 stage(s) passed in 95s
+    all 12 stage(s) passed in 94s
     GATE PASSED
-    Both lines are from the run on commit 5219d60; this file is the only difference from that
+    Both lines are from the run on commit 3712fb8; this file is the only difference from that
     tree, and the run was repeated after it was added.
 
     Test count:
-    41 (gtest: "41 tests from 6 test suites ran", "[  PASSED  ] 41 tests"), all passing.
-    Stage A — 24: the 21 frozen names of SPEC.md section 5, under exactly those names, plus
-    RejectsVersionThatIsNotFirst (rule 1, which the frozen names do not reach),
-    EveryCorpusFileObeysTheFrozenRules (section 7) and NumbersAgreeWithTheString (the kit's
-    version template asks for it).
-    Stage B — 17, in tests/analysis_test.cpp: the two analyses of section 8, including one
-    test that walks the corpus and holds every machine in it to the contract both share.
+    46, in two binaries, all passing.
+      * fsmTable_tests — 41 ("41 tests from 6 test suites ran", "[  PASSED  ] 41 tests").
+        Stage A — 24: the 21 frozen names of SPEC.md section 5, under exactly those names, plus
+        RejectsVersionThatIsNotFirst (rule 1, which the frozen names do not reach),
+        EveryCorpusFileObeysTheFrozenRules (section 7) and NumbersAgreeWithTheString (the kit's
+        version template asks for it). Stage B — 17: the two analyses of section 8, including
+        one that walks the corpus and holds every machine in it to the contract both share.
+      * fsmTable_differential — 5 (stage C): 3 corpus machines, 200 generated machine/seed
+        pairs, 40 canonical-round-trip comparisons and 2 for the deliberate-disagreement control
+        — 285 trace comparisons over 54606 events, each comparing the state after every event,
+        the action log, and the count of events that moved nothing.
 
     Fuzz stage: runs / seconds / artifacts
-    2743901 runs / 60 s / 0 artifacts
-    "#2743901	DONE   cov: 252 ft: 927 corp: 56/4558b lim: 4096 exec/s: 44981 rss: 487Mb"
+    2777953 runs / 60 s / 0 artifacts
+    "#2777953	DONE   cov: 252 ft: 946 corp: 63/5490b lim: 4096 exec/s: 45540 rss: 462Mb"
     The run uses a copy of the frozen corpus inside the build directory, not the tracked
     corpus/: libFuzzer writes new coverage-increasing inputs into the directory it is handed,
     and doing that to the tracked tree would leave it dirty.
-    Stage B raised coverage from 150 to 252 (edges) and from 457 to 927 (features) by holding
-    the analyses to the same invariants as the rest of the library.
+    Stage B raised coverage from 150 to 252 (edges) and from 457 to 946 (features) by holding
+    the analyses to the same invariants as the rest of the library. Stage C adds no library code
+    for the target to reach, so its numbers are unchanged from that run.
 
     Stage reached:
-    Stage B. Stage A was green first. Stage C — the differential cross-check against FSMgine
-    2.1.0 — not started: SPEC.md section 8 says to stop at the end of each stage and report.
+    Stage C, the last one section 8 lists. All three stages are green.
 
     What I could not do:
-    Nothing that stages A and B ask for. Three things belong here rather than being left out:
-      * stage A was delivered with the kit's hooks PRESENT but NOT ARMED in this repository:
-        the copy from the arena brought the files, not .git/config, so core.hooksPath was
-        unset and no hook ever ran. It is armed now, and stage B's commit is the first one a
-        hook checked.
+    Nothing that stages A, B and C ask for. Four things belong here rather than being left out:
+      * stage A was delivered with the kit's hooks PRESENT but NOT ARMED in this repository: the
+        copy from the arena brought the files, not .git/config, so core.hooksPath was unset and
+        no hook ever ran. Armed in stage B, and every commit since has run the hook.
+      * the gate now REQUIRES FSMgine 2.1.0's headers at ~/hermes-workspace/FSMgine (override:
+        -DFSMTABLE_FSMGINE_DIR=<checkout>). Stage C's oracle is an independent library, and a
+        configuration without it fails loudly rather than skipping the cross-check — so a clone
+        on a machine with no FSMgine cannot configure this repo at all. That is the price of
+        section 8's oracle, stated rather than hidden. FSMgine itself is untouched: only its
+        headers are read, and nothing is built inside its tree.
       * two clang-tidy findings remain accepted in .ci/tidy-baseline.txt because the text they
         sit on is not this repo's to change: the underlying type of `enum class Op`, frozen by
-        SPEC.md section 4, and libFuzzer's entry-point signature. Every other finding the lint
-        stage reported was fixed in the code rather than accepted.
+        section 4, and libFuzzer's entry-point signature. Every other finding the lint stage
+        reported was fixed in the code rather than accepted.
       * the first version of the footprint probe this repo carries was too strict: it demanded
         the kit's audit line byte-for-byte, while this gate legitimately audits a seventh path
-        (its fuzz build dir). The probe now derives the audited set from the gate it checks,
-        and the kit was corrected as well.
+        (its fuzz build dir). The probe now derives the audited set from the gate it checks, and
+        the kit was corrected as well.
 
     What I had to guess:
-    Four readings, each with its alternative written up in QUESTIONS.md:
-      Q1 — the line number an error carries when a required directive is ABSENT. Chosen: 0,
-           which is what Error::line documents itself to mean. Alternative: line 1.
-      Q2 — whether `machine` and `initial` may follow the transitions. Chosen: yes, since
-           section 3's list is exhaustive by its own words and does not make it an error.
-      Q3 — whether a row carrying a `when` clause is a path for `unreachable`. Chosen: yes —
-           reachability is structural, and evaluating a guard is stage C's work.
-      Q4 — what a row naming a state that is not declared means (only a hand-built Machine
-           can produce one). Chosen: it leads nowhere, so both results stay subsets of
-           `states`. Alternative: treat the name as a state of its own.
+    Seven readings, each with its alternative written up in QUESTIONS.md — Q1 and Q2 (stage A),
+    Q3 and Q4 (stage B), Q5, Q6 and Q7 (stage C). The three from stage C:
+      Q5 — where stage C's second trace comes from, given that stages A and B define no execution
+           semantics and section 8 names no runner. Chosen: a reference interpreter inside the
+           test, with FSMgine as the independent oracle. Alternative: a public runner, which
+           would be a change to section 4's frozen API.
+      Q6 — whether a guarded row refines the unguarded row for the same (from, kind) whatever
+           order the file wrote them in. Chosen: yes — precedence, which is also the order `dump`
+           emits and what makes first-match-wins comparable at all. Alternative: strict file
+           order, under which the canonical form would discard behaviour.
+      Q7 — whether a canonical round trip preserves the order of `states`. Chosen: no; it
+           preserves the machine's meaning, its set of states and its canonical text. The first
+           draft of stage C's round-trip test asserted the opposite and failed. Alternative:
+           preserve it — impossible without a `state` directive the canonical form does not have.
