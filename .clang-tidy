@@ -1,0 +1,19 @@
+# fsmTable clang-tidy configuration — the `lint` stage of tools/ci.sh.
+#
+# The same value-plus-Core-Guidelines shape as FSMgine's config (his other C++ repo, same
+# gate): the value-only families that find real bugs (bugprone, performance) plus the Core
+# Guidelines checks that matter for a parser, which is where a "total function over any
+# byte string" promise actually gets broken — ownership, no malloc, no C-style casts, no
+# reinterpret_cast, bounds, use-after-move.
+#
+# Deliberately excluded, for the same reason FSMgine excludes them:
+#   cppcoreguidelines-avoid-magic-numbers  — the frozen tests assert specific line numbers
+#       and literal bounds (255, -2147483648) because THOSE NUMBERS ARE THE SPEC. Naming
+#       them in constants would obscure which spec rule a test is checking.
+#   cppcoreguidelines-non-private-member-variables-in-classes — nothing here is a class.
+Checks: '-*,bugprone-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-non-private-member-variables-in-classes,performance-*'
+
+# Which included files get reported. Diagnostics in the analysed .cpp are always reported;
+# this scopes HEADER findings, so it must match this repo's own headers and must not reach
+# into a sibling checkout.
+HeaderFilterRegex: 'src/.*\.hpp$|src/.*\.cpp$|tests/.*\.cpp$|fuzz/.*\.cpp$'

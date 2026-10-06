@@ -1,0 +1,27 @@
+# The gate's own footprint — load-bearing, not cosmetic: the `tree` stage fails when
+# the gate's own output shows up as an untracked file, and the stage creates these
+# before it looks.
+# No trailing slashes on the gate's own footprint, deliberately: the tree stage asks
+# `git check-ignore` about these paths BEFORE the stages that create them have run, and a
+# directory-only pattern cannot match a path that does not exist yet. `build-*/` passes on
+# the second run and fails on the first, which is the worst of both.
+.ci-logs
+build
+build-*
+.release
+.ci.env
+
+# python (the kit's recipe carries these; harmless here)
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# defensive, beyond the shipped recipe
+_deps/
+*.log
+
+# NOT ignored, deliberately: the corpus/ is tracked input, and .ci/ (were there one)
+# would hold the clang-tidy baseline, which is this repo's accepted-findings list.

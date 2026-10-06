@@ -1,0 +1,6 @@
+version 1
+machine TrafficLight
+initial Red
+transition Red --1--> Green action on_red_green
+transition Green --2--> Yellow
+transition Yellow --3--> Red when ge 30

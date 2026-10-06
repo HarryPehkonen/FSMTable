@@ -1,0 +1,9 @@
+# every op used at least once
+version 1
+machine Guarded
+initial A
+transition A --1--> B when eq 0
+transition B --2--> C when lt 10
+transition C --3--> D when le 10
+transition D --4--> A when gt -5
+transition A --5--> C when ge 30

@@ -1,0 +1,5 @@
+version 1
+machine Bad
+initial A
+transition A --1--> B
+transition A --1--> C

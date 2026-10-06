@@ -1,0 +1,39 @@
+// fsmtable/version.hpp.in — configured by CMake into version.hpp (@ONLY).
+//
+// WHY GENERATED RATHER THAN TYPED. The release number has exactly one home: the
+// `project(fsmTable VERSION x.y.z)` line in CMakeLists.txt. A second copy typed into a
+// header drifts, and the gate's `version` stage compares this header with that line so the
+// pair cannot disagree in silence. tools/release.sh is what edits the line.
+//
+// The numbers are `inline constexpr`, deliberately NOT macros: a macro leaks into every
+// translation unit that includes the header, cannot be scoped, and is what the C++
+// guidelines and clang-tidy both tell you to avoid.
+//
+// WIRING — what this repo does, in CMakeLists.txt:
+//
+//   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.hpp.in
+//                  ${CMAKE_CURRENT_BINARY_DIR}/generated/version.hpp @ONLY)
+//
+// `generated/version.hpp` under the build directory is the path the gate's `version`
+// stage looks at by default (CI_VERSION_HEADER), so no .ci.env entry is needed — and no
+// .ci.env entry COULD work, because that file is gitignored and a fresh clone would then
+// fail the stage. The .in suffix keeps the template out of any `*.hpp` glob.
+//
+// This is not included from the library's public header: the tests include it directly to
+// prove the numbers and the string agree, which is the only place it needs to be compiled.
+
+#pragma once
+
+#include <string_view>
+
+namespace fsmtable {
+
+inline constexpr int version_major = @PROJECT_VERSION_MAJOR@;
+inline constexpr int version_minor = @PROJECT_VERSION_MINOR@;
+inline constexpr int version_patch = @PROJECT_VERSION_PATCH@;
+
+/// @brief The version as "x.y.z", assembled at configure time from the numbers above
+/// @return A view of a string literal, valid for the lifetime of the program
+inline std::string_view version() { return "@PROJECT_VERSION@"; }
+
+}  // namespace fsmtable
