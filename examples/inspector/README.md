@@ -101,8 +101,13 @@ is the safe shape. `./build/fsmtable-inspect --canonical f.fsm > f.fsm` empties 
 reports that it cannot parse it — which is a shell trap rather than a bug, and the kind of thing
 worth knowing before pointing this at a file you care about.
 
-**Add the check the library does not have.** The obvious next one is a row that can never fire — a
-guarded row whose unguarded partner above it in the canonical order already matches every value, so
-the guard is dead code. The shape to follow is `SPEC.md` section 8's: a free function taking
-`const Machine&`, returning `std::vector<std::string>` or a small struct, no mutation and no
-failure mode. `tests/analysis_test.cpp` is where its tests would go, and it would get a line in `REPORT.md` beside the other decisions this format has taken.
+**Add the check the library does not have.** The one this format can actually have is the other half
+of rule 9: **a guarded row with no unguarded partner** — a machine that answers that kind only above
+(or below) some value and silently ignores the rest, a partial row. That is legal, sometimes
+deliberate, and it is exactly the shape that made `expire` a separate kind in `examples/protocol/`.
+
+A *dead guard* cannot happen here, which is worth knowing before proposing that check instead: within
+one `from`+`kind` the canonical order puts the guarded row first, so its guard is always reachable —
+the ordering rule is what buys that. The shape to follow for a new analysis is `SPEC.md` section 8's:
+a free function taking `const Machine&`, returning `std::vector<std::string>` or a small struct, no
+mutation and no failure mode. `tests/analysis_test.cpp` is where its tests would go.

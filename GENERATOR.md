@@ -67,6 +67,12 @@ point.
 * One refinement slot, one action per row, `int` comparisons: these are the format's v1 limits
   and `fsmgine::compiled::Machine`'s v1 limits, and they are the same limits. Widening either
   side is a change to the format (or to the back end), not to this tool.
+* What a limit *costs a caller* is not visible from that list, and it is where a design afternoon
+  goes: one guard per `from`+`kind` turns a second threshold into a second kind; no arithmetic puts
+  the clock and every counter in the driver; a self-transition is external, so a state's clauses
+  re-run on an event that stays put. `examples/protocol/README.md` takes each of those in turn,
+  beside the workaround it needs — read it before designing a machine that has to do anything with
+  time.
 * Names that are C++ keywords are refused rather than mangled — a state called `new` cannot
   become an enumerator, and mangling would break the round trip back to text (Q8).
 * A machine with more than 65535 states is refused: the state enum is `std::uint16_t`.
