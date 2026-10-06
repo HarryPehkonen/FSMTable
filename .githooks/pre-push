@@ -24,9 +24,11 @@ if [ -x "$root/tools/ci.sh" ]; then
     # release is here for the same reason the list is explicit at all: the stage that builds
     # the SECOND configuration must actually run, and this list - not CI_DEFAULT_STAGES - is
     # what a push runs. A stage that exists but never runs is a decoration.
-    exec "$root/tools/ci.sh" \
-        --require-clean \
-        tree format kitprobes build tests release version asan tsan tidy pristine
+    # The stages are ci.sh's CI_FULL_STAGES, which is deliberately not CI_DEFAULT_STAGES: a repo
+    # that extends the default list must not silently change what a push runs. This hook used to
+    # spell the list out and fell behind it by one stage — `fuzz`, the spec's — which is what
+    # tools/kit-probes/hook-tiers-agree.sh now fails the gate over.
+    exec "$root/tools/ci.sh" --require-clean full
 fi
 
 if [ -x "$root/scripts/gate.sh" ]; then

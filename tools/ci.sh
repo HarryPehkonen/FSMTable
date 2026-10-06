@@ -16,11 +16,20 @@
 #
 #   git config core.hooksPath .githooks     # one-time, per clone, enables the hooks
 #
-# Two tiers, because a C++ full run is minutes and a commit cannot afford minutes:
+# Two tiers, because a C++ full run is minutes and a commit cannot afford minutes. Both lists live
+# below as CI_FAST_STAGES and CI_FULL_STAGES, and the hooks NAME a tier rather than repeating its
+# stages — so a stage can be added to this gate and reach the hooks without editing them:
 #
-#   fast  (pre-commit)  build tests
+#   fast  (pre-commit)  format build tests
 #   full  (pre-push)    --require-clean tree format kitprobes build tests release version
-#                       asan tsan tidy pristine
+#                       asan tsan tidy pristine fuzz
+#
+# `format` is in the fast tier because it is the one check that says "the file you are about to
+# commit is not the file the formatter would write": well under a second on a warm tree, and the
+# cheap half of a rule whose expensive half runs at push time. `fuzz` is the spec's stage, which
+# the kit does not ship — precisely the kind of addition a hook would otherwise have to know about.
+#
+# tools/kit-probes/hook-tiers-agree.sh checks all of this at `kitprobes` time.
 #
 # Configuration lives in .ci.env (gitignored, optional); every knob has a default here,
 # so the repo works with no config at all. See .ci.env.example.
@@ -73,12 +82,13 @@ CI_TSAN_BUILD_DIR=${CI_TSAN_BUILD_DIR:-build-tsan}
 CI_LOG_DIR=${CI_LOG_DIR:-.ci-logs}
 CI_STRICT_TOOLS=${CI_STRICT_TOOLS:-0}           # 1 = a missing tool fails instead of SKIPping
 CI_KEEP_TMP=${CI_KEEP_TMP:-0}                   # 1 = keep the pristine temp dir for inspection
-# The default set is the kit's, with the spec's two extra stages wired in:
-#   * `lint` IS the spec's name for the clang-tidy stage this gate calls `tidy`; see
-#     stage_lint below. `tidy` stays selectable by name but is out of the default list,
-#     because `lint` runs it — two names for one check in one run would just be noise.
+#   * `lint` IS the spec's name for the clang-tidy stage this gate calls `tidy`; see stage_lint
+#     below. The tiers name `tidy`, so no run pays twice for one check; `lint` stays selectable by
+#     name for a reader following the spec's stage list.
 #   * `fuzz` is the libFuzzer stage the spec requires and the kit does not ship.
-CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format kitprobes build lint tests release version asan tsan pristine fuzz"}
+CI_FAST_STAGES=${CI_FAST_STAGES:-"format build tests"}
+CI_FULL_STAGES=${CI_FULL_STAGES:-"tree format kitprobes build tests release version asan tsan tidy pristine fuzz"}
+CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-$CI_FULL_STAGES}
 # The fuzz stage's own build dir and its run length; 60 s is the spec's number.
 CI_FUZZ_BUILD_DIR=${CI_FUZZ_BUILD_DIR:-build-fuzz}
 CI_FUZZ_SECONDS=${CI_FUZZ_SECONDS:-60}
@@ -802,6 +812,8 @@ while [ $# -gt 0 ]; do
             done
             printf '\n'
             exit 0 ;;
+        fast) STAGES_REQUESTED+=($CI_FAST_STAGES) ;;
+        full) STAGES_REQUESTED+=($CI_FULL_STAGES) ;;
         --require-clean) REQUIRE_CLEAN=1 ;;
         --allow-untracked) ALLOW_UNTRACKED=1 ;;
         --strict-tools) CI_STRICT_TOOLS=1 ;;
