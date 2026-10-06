@@ -1,7 +1,7 @@
 // fsmtable/version.hpp.in — configured by CMake into version.hpp (@ONLY).
 //
 // WHY GENERATED RATHER THAN TYPED. The release number has exactly one home: the
-// `project(fsmTable VERSION x.y.z)` line in CMakeLists.txt. A second copy typed into a
+// `project(FSMTable VERSION x.y.z)` line in CMakeLists.txt. A second copy typed into a
 // header drifts, and the gate's `version` stage compares this header with that line so the
 // pair cannot disagree in silence. tools/release.sh is what edits the line.
 //

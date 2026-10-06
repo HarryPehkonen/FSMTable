@@ -1,4 +1,4 @@
-// fsmTable — stage A: a total text format, a parser, a canonical dump.
+// FSMTable — stage A: a total text format, a parser, a canonical dump.
 //
 // "Total" is the design constraint the whole file is shaped by: every byte string is
 // either a valid machine or an error with a line number. There is no input that reaches

@@ -1,4 +1,4 @@
-# fsmTable — specification v1
+# FSMTable — specification v1
 
 You are implementing a small C++17 library from scratch, test-first. Read this whole
 file before writing code. Follow the stages in order. Do not skip the gate.
@@ -17,7 +17,7 @@ file before writing code. Follow the stages in order. Do not skip the gate.
 
 ## 1. What to build
 
-`fsmTable` reads a state machine from plain text, and writes one back out. Nothing
+`FSMTable` reads a state machine from plain text, and writes one back out. Nothing
 else: no code generation, no execution, no FSMgine dependency in stage A. The point is
 a **total** text format — any byte string is either a valid machine or an error with a
 line number, never undefined behaviour.

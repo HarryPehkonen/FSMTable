@@ -1,4 +1,4 @@
-// fsmTable stage B tests — the two analysis functions of SPEC.md section 8.
+// FSMTable stage B tests — the two analysis functions of SPEC.md section 8.
 //
 // Written BEFORE the implementations, against stubs that return nothing: every test below
 // was watched fail, which is the RED this stage needed. Section 8 fixes the names, the

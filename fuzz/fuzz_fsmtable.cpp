@@ -1,4 +1,4 @@
-// fsmTable — the libFuzzer target for stage A.
+// FSMTable — the libFuzzer target for stage A.
 //
 // The oracle is the format's own promise: `parse` is total, an error never carries a
 // partial machine, and a machine that parsed survives dump -> parse -> dump unchanged.

@@ -1,4 +1,4 @@
-// fsmTable stage A tests.
+// FSMTable stage A tests.
 //
 // The test names and their meanings are frozen by SPEC.md section 5; the corpus rules
 // come from section 7. Every error test asserts BOTH that the line number is right AND

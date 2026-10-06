@@ -1,4 +1,4 @@
-# fsmTable clang-tidy configuration — the `lint` stage of tools/ci.sh.
+# FSMTable clang-tidy configuration — the `lint` stage of tools/ci.sh.
 #
 # The same value-plus-Core-Guidelines shape as FSMgine's config (his other C++ repo, same
 # gate): the value-only families that find real bugs (bugprone, performance) plus the Core

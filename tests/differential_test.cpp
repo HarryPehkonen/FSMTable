@@ -1,4 +1,4 @@
-// fsmTable stage C — the differential cross-check of SPEC.md section 8.
+// FSMTable stage C — the differential cross-check of SPEC.md section 8.
 //
 // Section 8 asks for an identical trace — the state after every event, plus the action log —
 // between a machine this library parsed and the same machine driven by FSMgine's compiled back

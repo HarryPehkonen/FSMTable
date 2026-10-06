@@ -1,4 +1,4 @@
-// fsmTable — stage A public API, transcribed from SPEC.md section 4 (frozen).
+// FSMTable — stage A public API, transcribed from SPEC.md section 4 (frozen).
 #pragma once
 
 #include <optional>

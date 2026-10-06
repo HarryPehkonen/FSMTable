@@ -1,4 +1,4 @@
-# REPORT.md — fsmTable, stages A, B and C
+# REPORT.md — FSMTable, stages A, B and C
 
     Gate verdict line (verbatim):
     all 12 stage(s) passed in 94s

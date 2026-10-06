@@ -21,7 +21,7 @@
 # `check-ignore`, with the `$CI_*` names in it resolved to their defaults. That is
 # deliberate, and it is the one thing this probe got wrong in its first version, which
 # demanded the kit's audit line byte-for-byte and would have reported three of the five C++
-# repos as missing the fix when what they actually do is audit a DIFFERENT SET (fsmTable adds
+# repos as missing the fix when what they actually do is audit a DIFFERENT SET (FSMTable adds
 # its fuzz build dir; jsonTools and Permuto audit fewer dirs because they run fewer stages).
 # A fork MAY audit a different set; it may not audit a path its own recipe fails to ignore.
 #

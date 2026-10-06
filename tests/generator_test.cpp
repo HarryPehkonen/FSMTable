@@ -1,4 +1,4 @@
-// fsmTable code-generator tests.
+// FSMTable code-generator tests.
 //
 // The headers under test are WRITTEN AT BUILD TIME by fsmtable-gen from corpus/ and
 // tests/fixtures/, and compiled here: a generator that emits something that does not compile, or
