@@ -99,3 +99,41 @@ additions rather than a second format:
 QUESTIONS.md grew by Q12 (a kind name is declared before the row that uses it), Q13 (a row that
 stays put is an external transition) and Q14 (the factory does not run the initial state's entry
 clause) — three more readings, each with its alternative written up beside it.
+
+
+## Appendix — the examples after the additions
+
+The four additions above changed what the format can *express*. The three below change nothing: they
+are consumers, and between them they are evidence that the two frozen sections are enough to write a
+real program against.
+
+    example                                   commit    document
+    the calculator                            39ba706   examples/calculator/README.md
+    the connection lifecycle, the inspector
+    and tools/check-doc-links.sh              b377eb3   examples/protocol/README.md
+                                                        examples/inspector/README.md
+                                                        examples/README.md
+
+    Gate verdict line for the second (verbatim):
+    all 12 stage(s) passed in 115s
+    GATE PASSED
+    Both lines are from the run on commit b377eb3; this file is the only difference from that tree,
+    and the run was repeated after it was added.
+
+What the second round exercised that the first could not:
+
+  * the generator on **time** rather than arithmetic — a value compared against one threshold and
+    never accumulated, and a `tick` refinement pair whose two halves appear side by side in the
+    recorded trace (`tick 400` absorbs, `tick 1200` retransmits);
+  * the library **without** the generator: `fsmtable-inspect` is the first consumer of
+    `unreachable` and `sink_states` that is not their own test, and the first thing in this
+    repository to read a `.fsm` at run time;
+  * `pristine` earning its keep. The doc-link checker passed in the working tree and failed in the
+    archive, because `git archive` has no `.git` for `git ls-files` to read; the stage caught a real
+    bug in a tool written the same day, which is the whole argument for building the tree a stranger
+    receives;
+  * the limits the protocol example meets, each written down where it bites rather than in the
+    abstract: one guard per `from`+`kind` (so giving up is its own kind), no arithmetic (so the
+    clock and the retry budget are the driver's), an external self-transition (so a state's clauses
+    re-run on a tick that stays put) and no internal transition (so `Established` cannot carry an
+    entry clause). `examples/protocol/README.md` states each one beside its workaround.
