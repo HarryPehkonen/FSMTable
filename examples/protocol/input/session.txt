@@ -1,0 +1,18 @@
+# A connection that opens, retransmits once, gets established, swaps a packet, loses the peer,
+# waits out TIME_WAIT, opens again — and is then sent directives it has no business sending. The
+# two it has no row for in that state are what makes the run exit non-zero.
+
+open
+tick 400          # a quiet tick: the unguarded half of the refinement pair
+tick 1200         # past the guard: the guarded half retransmits
+syn_ack
+data 64           # the peer's packet size rides on the event
+tick 1000
+fin
+tick 1999         # not yet
+tick 2000         # TIME_WAIT is over
+
+open              # a new connection, because Refused is where the old one ended
+data 512          # SynSent has no row for data: a protocol violation
+reset
+expire            # and Refused has no row for anything at all

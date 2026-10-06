@@ -1,0 +1,13 @@
+open                  Closed -> SynSent   on_open, arm_timer
+tick 400              SynSent -> SynSent   cancel_timer, arm_timer
+tick 1200             SynSent -> SynSent   cancel_timer, retransmit, arm_timer
+syn_ack               SynSent -> Established   cancel_timer, on_syn_ack
+data 64               Established -> Established   on_data
+tick 1000             Established -> Established   (nothing ran)
+fin                   Established -> TimeWait   on_peer_fin, arm_time_wait
+tick 1999             TimeWait -> TimeWait   arm_time_wait
+tick 2000             TimeWait -> Closed   on_time_wait_over
+open                  Closed -> SynSent   on_open, arm_timer
+data 512              ! SynSent is not a state this directive means anything in
+reset                 SynSent -> Refused   cancel_timer, on_refused_while_opening, on_refused
+expire                ! Refused is not a state this directive means anything in

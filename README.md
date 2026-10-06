@@ -28,13 +28,20 @@ format and the library API — are frozen text, and the additions sit below that
 frozen test, the corpus and the dump oracle pass unchanged. `REPORT.md` carries the deliveries
 and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not built yet.
 
+`examples/` holds three complete programs, each with its own tests and its own README: a calculator
+(the generator on arithmetic), a connection lifecycle with timeouts (the generator on time), and
+`fsmtable-inspect`, a tool that reads `.fsm` files (the library with no generator at all).
+`examples/README.md` is the index, and it ends with a list of the machines worth building next.
+
 ## Quick start
 
     ./tools/ci.sh                     # the whole gate, 12 stages, ~2-3 minutes
     ./tools/ci.sh build tests         # the fast loop while working
 
     ./build/fsmtable-gen my.fsm -o my.hpp      # or write the header to stdout
-    ./build/calculator                         # the worked example: a line in, an answer out
+    ./build/calculator                         # the first worked example: a line in, an answer out
+    ./build/protocol                           # the second: a connection lifecycle, script-driven
+    ./build/fsmtable-inspect my.fsm            # the library without the generator
 
 `fsmtable-gen` exit codes: `0` written, `1` the input is unusable, `2` the command line is.
 Needs C++17, CMake, GTest, clang-format and clang-tidy for the gate, and FSMgine 2.1.0's headers
@@ -65,8 +72,14 @@ number and a message.
     ENTRY_EXIT.md    `state <name> entry ... exit ...` — entry and exit actions per state
     QUESTIONS.md     every place the spec left a choice, and the reading taken
     REPORT.md        what was delivered, and the gate verdict for each delivery
+    examples/README.md
+                     the three examples, the recipe they share, and what to build next
     examples/calculator/README.md
                      the worked example: how to read it, and how to build your own from it
+    examples/protocol/README.md
+                     time instead of arithmetic: refinement pairs, a sink, and four limits
+    examples/inspector/README.md
+                     the library without the generator, and why a sink is not a failure
 
 ## Layout
 
@@ -74,7 +87,7 @@ number and a message.
     gen/             fsmtable-gen: the text → code direction
     tests/           the gtest suites, the corpus, the fixtures, the differential oracle
     corpus/          .fsm files the tests and the fuzzer share
-    examples/        calculator — a complete consumer, machine and support code
+    examples/        calculator, protocol, inspector — three complete consumers
     fuzz/            the libFuzzer target
     tools/           ci.sh (the gate) and the kit probes
     .ci/             the accepted clang-tidy findings, with the reason for each

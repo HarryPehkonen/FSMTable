@@ -84,6 +84,40 @@ add_executable(calculator examples/calculator/main.cpp)
 target_link_libraries(calculator PRIVATE calculator_core)
 target_compile_options(calculator PRIVATE ${FSMTABLE_WARNINGS})
 
+# --- the protocol example: a second consumer, and the first one with a clock. The clock is the
+# driver's (`tick` carries the milliseconds that have passed), which is what keeps the machine a
+# table. Semantics: examples/protocol/README.md.
+set(FSMTABLE_PROTOCOL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/examples/protocol")
+
+add_custom_command(
+    OUTPUT "${FSMTABLE_GENERATED_DIR}/fsm_protocol.hpp"
+    COMMAND fsmtable_gen examples/protocol/protocol.fsm
+            -o "${FSMTABLE_GENERATED_DIR}/fsm_protocol.hpp"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    DEPENDS fsmtable_gen "${FSMTABLE_PROTOCOL_DIR}/protocol.fsm"
+    COMMENT "fsmtable-gen: protocol.fsm -> fsm_protocol.hpp"
+    VERBATIM)
+add_custom_target(fsmtable_protocol_header
+    DEPENDS "${FSMTABLE_GENERATED_DIR}/fsm_protocol.hpp")
+
+add_library(protocol_core STATIC examples/protocol/protocol.cpp)
+add_dependencies(protocol_core fsmtable_protocol_header)
+target_link_libraries(protocol_core PUBLIC fsmTable)
+target_compile_options(protocol_core PRIVATE ${FSMTABLE_WARNINGS})
+target_include_directories(protocol_core PUBLIC
+    "${FSMTABLE_PROTOCOL_DIR}" "${FSMTABLE_GENERATED_DIR}")
+target_include_directories(protocol_core SYSTEM PUBLIC "${FSMTABLE_FSMGINE_DIR}/include")
+
+add_executable(protocol examples/protocol/main.cpp)
+target_link_libraries(protocol PRIVATE protocol_core)
+target_compile_options(protocol PRIVATE ${FSMTABLE_WARNINGS})
+
+# --- the inspector: the library half of the format with no generator in sight. It reads a .fsm at
+# RUN time, so there is nothing to generate and nothing to link but the library itself.
+add_executable(fsmtable-inspect examples/inspector/inspector.cpp)
+target_link_libraries(fsmtable-inspect PRIVATE fsmTable)
+target_compile_options(fsmtable-inspect PRIVATE ${FSMTABLE_WARNINGS})
+
 if(FSMTABLE_BUILD_TESTS)
     include(CTest)
     find_package(GTest REQUIRED)
@@ -186,6 +220,37 @@ if(FSMTABLE_BUILD_TESTS)
 
     add_test(NAME calculator_session
         COMMAND sh -c "\"$<TARGET_FILE:calculator>\" < \"${FSMTABLE_CALCULATOR_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_CALCULATOR_DIR}/input/session.expected\" -")
+
+    add_executable(protocol_tests examples/protocol/protocol_test.cpp)
+    target_link_libraries(protocol_tests PRIVATE protocol_core GTest::gtest_main)
+    target_compile_options(protocol_tests PRIVATE ${FSMTABLE_WARNINGS})
+    add_test(NAME protocol_tests COMMAND protocol_tests)
+
+    # The same end-to-end shape as the calculator's: the script through the built binary, diffed
+    # line for line against the recorded trace. That binary exits 1 when a directive was not
+    # answered, and this script contains two of those on purpose.
+    add_test(NAME protocol_session
+        COMMAND sh -c "\"$<TARGET_FILE:protocol>\" < \"${FSMTABLE_PROTOCOL_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_PROTOCOL_DIR}/input/session.expected\" -")
+
+    # The inspector, as ctest cases. Each pins the exit code as well as the output, because the
+    # exit code is the part a script or a hook would use: 0 nothing to report, 1 the file could not
+    # be read or a state is unreachable, 2 the command line is wrong.
+    add_test(NAME inspect_reports_a_clean_machine
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" > /dev/null")
+    add_test(NAME inspect_finds_an_unreachable_state
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
+    set_tests_properties(inspect_finds_an_unreachable_state PROPERTIES
+        PASS_REGULAR_EXPRESSION "UNREACHABLE: Orphan")
+    add_test(NAME inspect_canonical_is_stable
+        COMMAND sh -c "first=$(\"$<TARGET_FILE:fsmtable-inspect>\" --canonical \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); second=$(printf '%s\\n' \"$first\" | \"$<TARGET_FILE:fsmtable-inspect>\" --canonical /dev/stdin); [ \"$first\" = \"$second\" ]")
+    add_test(NAME inspect_refuses_no_arguments
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" > /dev/null 2>&1; [ $? -eq 2 ]")
+
+    # Every relative link in a markdown file in this tree has to point at something. The script
+    # carries the reason it exists; the short version is that a false reference to a file this
+    # repository does not have reached a shipped README once already.
+    add_test(NAME docs_links_resolve
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && sh tools/check-doc-links.sh")
 endif()
 
 # The fuzz target is written against libFuzzer's entry point, so it can only be LINKED

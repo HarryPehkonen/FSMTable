@@ -1,0 +1,60 @@
+# A connection lifecycle, with timeouts.
+#
+# The machine decides what is legal and when a timer has expired. The driver owns the clock, the
+# retry count and the socket — a `tick` carries the milliseconds that have passed. That splitting
+# of responsibility is the format's boundary, and this file is where it shows (README.md).
+#
+# Two shapes worth reading for:
+#   * `SynSent --tick-->` is a refinement pair (SPEC.md rule 9): the guarded row retransmits once
+#     the timeout has passed, the unguarded row absorbs a quiet tick, so every tick in SynSent is
+#     a decision the table makes rather than a gap the driver fills.
+#   * `expire` is a KIND, not a second guard. One (from, kind) may carry one guard and no more,
+#     so "the retries are exhausted" is the driver's judgement, delivered as its own event.
+# Tick rows exist exactly where a connection is in progress (SynSent, Established, TimeWait), and
+# the ones with no action are a decision the table makes rather than a gap: a tick while idle is
+# answered. Closed and Refused have no tick row at all, which is how the table says that ticking a
+# connection that is not open is the caller's mistake.
+#
+#   * SynSent carries entry and exit clauses AND takes self-transitions on `tick`, so a quiet tick
+#     re-runs them (ENTRY_EXIT.md, Q13: a self-transition is external). Harmless here, where the
+#     clauses announce what the state is — but a driver that reads `arm_timer` as "restart the
+#     clock" should keep that work in the row's action, because a row fires once per event.
+version 1
+machine Connection
+initial Closed
+
+kind open = 1
+kind syn_ack = 2
+kind data = 3
+kind fin = 4
+kind reset = 5
+kind tick = 6
+kind expire = 7
+
+# `Closed` carries no entry clause on purpose: the machine is created in it, and the generated
+# factory does not run the initial state's entry action (ENTRY_EXIT.md, Q14). Nothing else needs
+# to happen when a machine that has not been used yet is idle.
+#
+# `Established` carries no entry clause either, and the reason is a limit rather than a choice:
+# `Established --data--> Established` is an external transition (ENTRY_EXIT.md, Q13), so a clause
+# here would re-run on every packet. The connection's setup therefore belongs to the row that
+# gets us there (`on_syn_ack`), which is what an internal transition would have saved us.
+state SynSent entry arm_timer exit cancel_timer
+state TimeWait entry arm_time_wait
+state Refused entry on_refused
+
+transition Closed --open--> SynSent action on_open
+
+transition SynSent --syn_ack--> Established action on_syn_ack
+transition SynSent --tick--> SynSent when ge 1000 action retransmit
+transition SynSent --tick--> SynSent
+transition SynSent --expire--> Refused action on_give_up
+transition SynSent --reset--> Refused action on_refused_while_opening
+
+transition Established --data--> Established action on_data
+transition Established --tick--> Established
+transition Established --fin--> TimeWait action on_peer_fin
+
+transition TimeWait --tick--> Closed when ge 2000 action on_time_wait_over
+transition TimeWait --tick--> TimeWait
+transition TimeWait --data--> Established action on_reopen

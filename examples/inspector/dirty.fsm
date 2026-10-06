@@ -1,0 +1,19 @@
+# A deliberately imperfect machine, so the inspector's own documentation can show what it reports.
+#
+#   Orphan   nothing can reach it — it is not the initial state and no row leads to it. That is
+#            always a mistake, and `fsmtable-inspect` exits non-zero for it.
+#   Done     nothing leaves it — a sink state. That is sometimes exactly what you want (a refused
+#            connection, a terminal error), so it is reported and does not fail the run.
+#
+# `Orphan` has an outgoing row and no incoming one; `Done` has an incoming row and no outgoing one.
+# Both are one line away from being correct, which is the point.
+version 1
+machine Dirty
+initial Start
+
+kind step = 1
+kind stop = 2
+
+transition Start --step--> Running
+transition Running --stop--> Done
+transition Orphan --step--> Start
