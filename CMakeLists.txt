@@ -38,7 +38,10 @@ if(NOT EXISTS "${FSMTABLE_FSMGINE_HEADER}")
         "Point -DFSMTABLE_FSMGINE_DIR=<path-to-FSMgine> at a checkout.")
 endif()
 
-add_library(fsmTable src/fsmtable.cpp)
+# Four translation units since 2026-10-06: the single 754-line src/fsmtable.cpp held the format's
+# vocabulary, the parser, the writer and the graph analysis, and a reader looking for one had to walk
+# past the other three. No logic changed in the split.
+add_library(fsmTable src/tokens.cpp src/parse.cpp src/dump.cpp src/analysis.cpp)
 target_include_directories(fsmTable PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_options(fsmTable PRIVATE ${FSMTABLE_WARNINGS})
 
