@@ -244,10 +244,19 @@ std::optional<Machine> parse(std::string_view text, Error& error) {
 
 std::optional<Machine> parse(std::string_view text, Error& error,
                              std::vector<KindName>& kind_names) {
-    // Cleared first, so a failure reports no names at all: the contract is that a refused file
-    // produces no machine and nothing partial to go with it.
+    std::vector<StateAction> ignored; // the three-argument form has nowhere to put them
+    return parse(text, error, kind_names, ignored);
+}
+
+std::optional<Machine> parse(std::string_view text, Error& error, std::vector<KindName>& kind_names,
+                             std::vector<StateAction>& state_actions) {
+    // Cleared first, so a failure reports no names and no decorations at all: the contract is
+    // that a refused file produces no machine and nothing partial to go with it.
     kind_names.clear();
-    std::vector<KindName> declared; // declaration order, as written
+    state_actions.clear();
+    std::vector<KindName> declared;       // declaration order, as written
+    std::vector<StateAction> decorations; // one per decorated state, first mention first
+    std::vector<int> decoration_lines;    // the line each decoration started on, for the check
     Machine machine;
     bool version_seen = false;
     bool machine_seen = false;
@@ -349,6 +358,60 @@ std::optional<Machine> parse(std::string_view text, Error& error,
                                   "duplicate kind number " + std::to_string(value));
                 }
                 declared.push_back(KindName{std::string(fields[1]), static_cast<int>(value)});
+            } else if (directive == "state") {
+                if (fields.size() < 3) {
+                    return reject(error, line_number, "state needs an entry or exit clause");
+                }
+                const std::string_view state_name = fields[1];
+                if (!valid_name(state_name)) {
+                    return reject(error, line_number, "malformed state name " + quoted(state_name));
+                }
+                // Two lines for one state merge: the clauses are independent, so
+                // `state A entry x` and `state A exit y` are one decoration written twice.
+                StateAction* decorated = nullptr;
+                for (StateAction& entry : decorations) {
+                    if (entry.state == state_name)
+                        decorated = &entry;
+                }
+                if (decorated == nullptr) {
+                    decorations.push_back(StateAction{std::string(state_name), "", ""});
+                    decorated = &decorations.back();
+                    decoration_lines.push_back(line_number);
+                }
+
+                std::size_t i = 2;
+                bool had_exit = false;
+                while (i < fields.size()) {
+                    const std::string_view clause = fields[i];
+                    if (clause != "entry" && clause != "exit") {
+                        return reject(error, line_number,
+                                      "unknown clause " + quoted(clause) + " on a state line");
+                    }
+                    const bool is_entry = clause == "entry";
+                    if (is_entry && had_exit) {
+                        return reject(error, line_number, "entry clause after exit clause");
+                    }
+                    if (is_entry && !decorated->enter.empty()) {
+                        return reject(error, line_number, "duplicate entry clause for this state");
+                    }
+                    if (!is_entry && !decorated->exit.empty()) {
+                        return reject(error, line_number, "duplicate exit clause for this state");
+                    }
+                    if (i + 1 >= fields.size()) {
+                        return reject(error, line_number, std::string(clause) + " needs an action");
+                    }
+                    if (!valid_name(fields[i + 1])) {
+                        return reject(error, line_number,
+                                      "malformed action name " + quoted(fields[i + 1]));
+                    }
+                    if (is_entry) {
+                        decorated->enter = std::string(fields[i + 1]);
+                    } else {
+                        decorated->exit = std::string(fields[i + 1]);
+                        had_exit = true;
+                    }
+                    i += 2;
+                }
             } else if (directive == "transition") {
                 if (fields.size() < 4) {
                     return reject(error, line_number, "transition needs a from, a kind and a to");
@@ -450,6 +513,19 @@ std::optional<Machine> parse(std::string_view text, Error& error,
             break;
     }
 
+    // A decoration for a state the machine does not have is a misspelling, and rule 7's pattern
+    // cannot catch it: the name is well formed, it just names nothing.
+    for (std::size_t i = 0; i < decorations.size(); ++i) {
+        const bool known
+            = std::find(machine.states.begin(), machine.states.end(), decorations[i].state)
+              != machine.states.end();
+        if (!known) {
+            return reject(error, decoration_lines[i],
+                          "state '" + decorations[i].state
+                              + "' is decorated but no transition or initial line mentions it");
+        }
+    }
+
     if (!version_seen)
         return reject(error, 0, "no version directive");
     if (!machine_seen)
@@ -460,12 +536,14 @@ std::optional<Machine> parse(std::string_view text, Error& error,
     error.line = 0;
     error.message.clear();
     kind_names = declared;
+    state_actions = decorations;
     return machine;
 }
 
 namespace {
 
-std::string dump_with(const Machine& machine, const std::vector<KindName>& kind_names) {
+std::string dump_with(const Machine& machine, const std::vector<KindName>& kind_names,
+                      const std::vector<StateAction>& state_actions) {
     std::vector<const Transition*> rows;
     rows.reserve(machine.transitions.size());
     for (const Transition& row : machine.transitions) {
@@ -513,6 +591,28 @@ std::string dump_with(const Machine& machine, const std::vector<KindName>& kind_
             out += "kind " + entry->name + " = " + std::to_string(entry->kind) + "\n";
         }
     }
+    if (!state_actions.empty()) {
+        // Sorted by state name: canonical, and independent of the order the machine's own
+        // `states` list happens to be in — a canonical round trip rebuilds that list in its own
+        // order (QUESTIONS.md Q7), so using it here would make a decorated dump unstable.
+        std::vector<const StateAction*> decorated;
+        decorated.reserve(state_actions.size());
+        for (const StateAction& entry : state_actions) {
+            decorated.push_back(&entry);
+        }
+        std::sort(decorated.begin(), decorated.end(),
+                  [](const StateAction* a, const StateAction* b) { return a->state < b->state; });
+        for (const StateAction* entry : decorated) {
+            out += "state " + entry->state;
+            if (!entry->enter.empty()) {
+                out += " entry " + entry->enter;
+            }
+            if (!entry->exit.empty()) {
+                out += " exit " + entry->exit;
+            }
+            out += "\n";
+        }
+    }
     for (const Transition* row : rows) {
         const KindName* named = find_kind_number(kind_names, row->kind);
         out += "transition " + row->from + " --";
@@ -535,11 +635,16 @@ std::string dump_with(const Machine& machine, const std::vector<KindName>& kind_
 
 std::string dump(const Machine& machine) {
     // The frozen writer: numbers only, byte for byte what it always wrote.
-    return dump_with(machine, {});
+    return dump_with(machine, {}, {});
 }
 
 std::string dump(const Machine& machine, const std::vector<KindName>& kind_names) {
-    return dump_with(machine, kind_names);
+    return dump_with(machine, kind_names, {});
+}
+
+std::string dump(const Machine& machine, const std::vector<KindName>& kind_names,
+                 const std::vector<StateAction>& state_actions) {
+    return dump_with(machine, kind_names, state_actions);
 }
 namespace {
 

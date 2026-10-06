@@ -10,6 +10,7 @@
 // generator share the canonical-order rule, so reusing it here would make the two agree by
 // construction. This file carries its own plain reading of the semantics (the same reading
 // QUESTIONS.md Q5 records) and holds the compiled artifacts to it.
+#include "fsm_entry_exit.hpp"
 #include "fsm_guarded.hpp"
 #include "fsm_minimal.hpp"
 #include "fsm_named_kinds.hpp"
@@ -177,6 +178,27 @@ fsmtable::Machine parse_canonical(const std::string& path) {
         cannot_read(path + ": its canonical form did not parse: " + error.message);
     return *again;
 }
+
+// The decorated reading: the machine plus the two side tables the caller keeps. One unwrap, in a
+// helper that clang-tidy can see, rather than a `*` at every use.
+struct Decorated {
+    fsmtable::Machine machine;
+    std::vector<fsmtable::KindName> kinds;
+    std::vector<fsmtable::StateAction> states;
+};
+
+Decorated parse_decorated_text(const std::string& text) {
+    Decorated out;
+    fsmtable::Error error{0, ""};
+    const auto machine = fsmtable::parse(text, error, out.kinds, out.states);
+    if (!machine.has_value())
+        cannot_read("a decorated reading did not parse: line " + std::to_string(error.line) + ": "
+                    + error.message);
+    out.machine = *machine;
+    return out;
+}
+
+Decorated parse_decorated(const std::string& path) { return parse_decorated_text(read_file(path)); }
 
 // Re-expresses generated events as reference events. Both are (kind, value) pairs; the generated
 // one's kind is a scoped enum, which is the point of the conversion.
@@ -448,4 +470,146 @@ TEST(Generated, TheEmptyMachineIsGeneratedAndNeverMoves) {
     }
     EXPECT_EQ(moved, 0U) << "a machine with no rows moved";
     EXPECT_EQ(machine.currentStateName(), parsed.initial);
+}
+// ------------------------------------------------------------------ entry and exit actions
+
+namespace fsmtable_generated {
+
+// The Door machine's clauses are plain functions like any other action, so they are defined here
+// for the same reason: a name a .fsm uses and this file does not define is a link error.
+void on_opening(const DoorEvent& /*event*/) { log().push_back("on_opening"); }
+
+void on_already_open(const DoorEvent& /*event*/) { log().push_back("on_already_open"); }
+
+void on_entry_broken(const DoorEvent& /*event*/) { log().push_back("on_entry_broken"); }
+
+void on_entry_closed(const DoorEvent& /*event*/) { log().push_back("on_entry_closed"); }
+
+void on_exit_closed(const DoorEvent& /*event*/) { log().push_back("on_exit_closed"); }
+
+void on_entry_open(const DoorEvent& /*event*/) { log().push_back("on_entry_open"); }
+
+void on_exit_open(const DoorEvent& /*event*/) { log().push_back("on_exit_open"); }
+
+} // namespace fsmtable_generated
+
+namespace {
+
+std::string door_header() {
+    return read_file(std::string(FSMTABLE_GENERATED_DIR) + "/fsm_entry_exit.hpp");
+}
+
+fsmtable_generated::DoorEvent door_event(fsmtable_generated::DoorKind kind) {
+    return fsmtable_generated::DoorEvent{kind, 0};
+}
+
+// The three names the log should hold, in order.
+std::vector<std::string> calls(std::initializer_list<const char*> names) {
+    std::vector<std::string> out;
+    for (const char* name : names)
+        out.push_back(name);
+    return out;
+}
+
+} // namespace
+
+TEST(EntryExitActions, TheArtifactComposesExitActionAndEntry) {
+    const std::string header = door_header();
+    EXPECT_NE(header.find("inline void Closed_leaving_to_Open(const DoorEvent& event) {\n"
+                          "    on_exit_closed(event);\n"
+                          "    on_opening(event);\n"
+                          "    on_entry_open(event);\n"
+                          "}"),
+              std::string::npos)
+        << "the source state's exit, the row's action and the target state's entry, in order";
+    EXPECT_NE(header.find("inline void Closed_leaving_to_Broken(const DoorEvent& event) {\n"
+                          "    on_exit_closed(event);\n"
+                          "    on_entry_broken(event);\n"
+                          "}"),
+              std::string::npos)
+        << "a row with no action of its own is just the two clauses";
+    // A clause is an action, so the header declares it: the other half of the contract.
+    EXPECT_NE(header.find("void on_entry_closed(const DoorEvent& event);"), std::string::npos);
+    EXPECT_NE(header.find("void on_exit_open(const DoorEvent& event);"), std::string::npos);
+    EXPECT_NE(header.find("inline void enterInitialDoor(const DoorEvent& event = {}) {"),
+              std::string::npos);
+}
+
+TEST(EntryExitActions, ATransitionRunsTheSourceExitTheRowActionAndTheTargetEntry) {
+    auto machine = fsmtable_generated::makeDoor();
+    log().clear();
+    ASSERT_TRUE(machine.process(door_event(fsmtable_generated::DoorKind::open)));
+    EXPECT_EQ(log(), calls({"on_exit_closed", "on_opening", "on_entry_open"}));
+    EXPECT_EQ(machine.currentStateName(), "Open");
+}
+
+TEST(EntryExitActions, ASelfTransitionLeavesAndReEnters) {
+    // The format has no way to say "internal transition", so a row that stays put is an external
+    // one: the state is left and entered again (ENTRY_EXIT.md).
+    auto machine = fsmtable_generated::makeDoor();
+    ASSERT_TRUE(machine.process(door_event(fsmtable_generated::DoorKind::open))); // Closed -> Open
+    log().clear();
+    ASSERT_TRUE(machine.process(door_event(fsmtable_generated::DoorKind::open))); // Open -> Open
+    EXPECT_EQ(log(), calls({"on_exit_open", "on_already_open", "on_entry_open"}));
+}
+
+TEST(EntryExitActions, AStateWithOnlyOneClauseContributesOnlyThat) {
+    auto machine = fsmtable_generated::makeDoor();
+    ASSERT_TRUE(machine.process(door_event(fsmtable_generated::DoorKind::knock))); // -> Broken
+    log().clear();
+    ASSERT_TRUE(machine.process(door_event(fsmtable_generated::DoorKind::close))); // Broken ->
+    EXPECT_EQ(log(), calls({"on_entry_closed"}))
+        << "Broken has an entry clause and no exit clause, so leaving it calls nothing";
+}
+
+TEST(EntryExitActions, TheFactoryDoesNotRunTheInitialEntry) {
+    log().clear();
+    const auto machine = fsmtable_generated::makeDoor();
+    EXPECT_TRUE(log().empty())
+        << "makeDoor() must not call an action: a factory with a side effect is the surprise the "
+           "generated artifact avoids";
+    (void)machine;
+
+    log().clear();
+    fsmtable_generated::enterInitialDoor();
+    EXPECT_EQ(log(), calls({"on_entry_closed"})) << "the caller runs it, once, on purpose";
+}
+
+TEST(EntryExitActions, TheClausesArePartOfTheCanonicalForm) {
+    // A generated header's fingerprint comment comes from the canonical form, so the clauses have
+    // to be in it: two files that differ only in an entry clause are two machines.
+    const Decorated parsed = parse_decorated(fixture("entry_exit.fsm"));
+    ASSERT_EQ(parsed.states.size(), 3U) << "the fixture decorates three states";
+
+    const std::string full = fsmtable::dump(parsed.machine, parsed.kinds, parsed.states);
+    EXPECT_NE(full, fsmtable::dump(parsed.machine, parsed.kinds))
+        << "the clauses are missing from the dump";
+    EXPECT_NE(full.find("state Closed entry on_entry_closed exit on_exit_closed"),
+              std::string::npos);
+}
+
+TEST(EntryExitActions, TheDumpOfADecoratedMachineParsesBackToIt) {
+    const Decorated first = parse_decorated(fixture("entry_exit.fsm"));
+    const std::string written = fsmtable::dump(first.machine, first.kinds, first.states);
+
+    const Decorated again = parse_decorated_text(written);
+    EXPECT_EQ(fsmtable::dump(again.machine, again.kinds, again.states), written)
+        << "a decorated dump has to be stable";
+    ASSERT_EQ(again.states.size(), first.states.size());
+    // The dump writes the state lines sorted by name while the file's own order is whatever the
+    // fixture wrote, so compare the two decorations as sets of states, not position by position.
+    const auto by_name = [](std::vector<fsmtable::StateAction> rows) {
+        std::sort(rows.begin(), rows.end(),
+                  [](const fsmtable::StateAction& a, const fsmtable::StateAction& b) {
+                      return a.state < b.state;
+                  });
+        return rows;
+    };
+    const std::vector<fsmtable::StateAction> written_rows = by_name(first.states);
+    const std::vector<fsmtable::StateAction> read_rows = by_name(again.states);
+    for (std::size_t i = 0; i < written_rows.size(); ++i) {
+        EXPECT_EQ(read_rows[i].state, written_rows[i].state);
+        EXPECT_EQ(read_rows[i].enter, written_rows[i].enter);
+        EXPECT_EQ(read_rows[i].exit, written_rows[i].exit);
+    }
 }

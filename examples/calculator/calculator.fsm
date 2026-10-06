@@ -10,6 +10,9 @@
 # negative: `-` is always the subtraction OPERATOR here, so `0 - 5` rather than `-5`).
 # `equals` ends the line: print what is held. `clear` starts a new one.
 #
+# The reset itself is the `Entry` state's `entry` clause below: arriving in `Entry` runs
+# `clear_all`, so the `--clear-->` rows need no action of their own (ENTRY_EXIT.md).
+#
 # Enter (`Equals`) is deliberately absent from every `Pending*` state: `12 +` is not in this
 # machine's language, so the shell says so instead of inventing a value.
 version 1
@@ -25,10 +28,11 @@ kind mul = 4
 kind div = 5
 kind equals = 6
 kind clear = 7
+state Entry entry clear_all
 
 # The first operand of a line.
 transition Entry --number--> Accum action take_operand
-transition Entry --clear--> Entry action clear_all
+transition Entry --clear--> Entry
 
 # An operator does not need an action to record itself: the state it moves to IS the operator.
 transition Accum --add--> PendingAdd
@@ -40,23 +44,23 @@ transition Accum --equals--> Accum
 # that does nothing is one that should not be named. The state stops where the line
 # finished rather than returning to Entry — Clear does that, at the start of the next
 # line — so the state a finished line leaves behind says how it ended.
-transition Accum --clear--> Entry action clear_all
+transition Accum --clear--> Entry
 
 # A number with an operator waiting: the arithmetic runs in the action, which reads the
 # operand from the event and the running value from the registers.
 transition PendingAdd --number--> Accum action add_operand
 transition PendingSub --number--> Accum action sub_operand
 transition PendingMul --number--> Accum action mul_operand
-transition PendingAdd --clear--> Entry action clear_all
-transition PendingSub --clear--> Entry action clear_all
-transition PendingMul --clear--> Entry action clear_all
+transition PendingAdd --clear--> Entry
+transition PendingSub --clear--> Entry
+transition PendingMul --clear--> Entry
 
 # Division by zero is a ROW, not a register check: the divisor is this event's value and the
 # pending operator is a state, so a guard can see what it needs. The generator emits the
 # guarded row first, which is what makes `x / 0` reachable at all.
 transition PendingDiv --number--> Error when eq 0 action note_division_by_zero
 transition PendingDiv --number--> Accum action div_operand
-transition PendingDiv --clear--> Entry action clear_all
+transition PendingDiv --clear--> Entry
 
 # The error state is TOTAL over the rest of the line on purpose: if a token were refused here
 # instead, the shell would report "unexpected operator" and hide the division that caused it.
@@ -66,4 +70,4 @@ transition Error --sub--> Error
 transition Error --mul--> Error
 transition Error --div--> Error
 transition Error --equals--> Error
-transition Error --clear--> Entry action clear_all
+transition Error --clear--> Entry

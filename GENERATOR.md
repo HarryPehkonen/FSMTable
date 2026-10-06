@@ -29,7 +29,15 @@ For a machine named `M` (the `.fsm`'s `machine` line), in one namespace:
 | `MKindNameOf` | `std::string_view (MKind)`, the declared name, or empty for an undeclared kind |
 | `MRows` | `constexpr std::array<fsmgine::compiled::Transition<…>, N>`, the transition table |
 | `makeM()` | a machine ready to drive, initial state set, names wired |
-| `void action(const MEvent&)` | one declaration per action the file names — you define these |
+| `void action(const MEvent&)` | one declaration per action the file names — row actions and `entry`/`exit` clauses alike; you define these |
+| `<from>_leaving_to_<to>` | the composed function for a row whose states are decorated: exit, then the row's action, then the entry |
+| `enterInitialM()` | the initial state's entry clause, if it has one. Nothing calls it (Q14) |
+
+The two functions in the middle of that table exist because the back end runs exactly one function
+per transition: a decorated row points at a composed function instead of its own action, and rows
+that compose the same three calls share one. Nothing in FSMgine changed — the composition happens
+here, at generation time — and a row whose ends carry no clause still points straight at its own
+action, which is why artifacts that use no clause are byte for byte what they were (ENTRY_EXIT.md).
 
 Kind names come from the file. `kind tick = 1` in the `.fsm` makes the enumerator `tick` — and
 `MKindNames` gives the string back, so code → text stays possible. The generated code then reads
@@ -68,8 +76,9 @@ point.
 
 ## Wiring it into a build
 
-`CMakeLists.txt` does it for four inputs at once: one `add_custom_command` per `.fsm`, all four
-headers generated into `build/generated/`, and `tests/generator_test.cpp` compiles them — so a
+`CMakeLists.txt` does it for every input in `FSMTABLE_GENERATOR_INPUTS` at once: one
+`add_custom_command` per `.fsm`, the headers generated into `build/generated/`, and
+`tests/generator_test.cpp` compiles them — so a
 generator that emits something that does not compile fails the build, not a review. The calls run
 with the source directory as their working directory, which is why each header's provenance
 comment names its input the way the repo sees it (`corpus/traffic_light.fsm`).
@@ -77,11 +86,13 @@ comment names its input the way the repo sees it (`corpus/traffic_light.fsm`).
 The generator's own failure paths are ctest cases: a corpus file that does not parse, a fixture
 whose state name is a keyword, and one shape check on the emitted table of the spec's example.
 
+Entry and exit actions are no longer on the list above: a state may carry them, and a composed
+function is what the table points at (ENTRY_EXIT.md).
+
 ## Not here yet
 
 Useful, and each one is a format decision before it is a generator change:
 
-* entry and exit actions per state;
 * parameterised actions, or a named registry instead of one function per action;
 * more than one refinement slot, i.e. richer predicates than one `int` comparison;
 * whether an action may post further events (reentrancy).

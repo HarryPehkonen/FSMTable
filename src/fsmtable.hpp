@@ -73,4 +73,28 @@ std::optional<Machine> parse(std::string_view text, Error& error,
                              std::vector<KindName>& kind_names);
 std::string dump(const Machine& m, const std::vector<KindName>& kind_names);
 
+// Entry and exit actions per state (ENTRY_EXIT.md, QUESTIONS.md Q13). Section 2 is frozen and
+// says states are declared by first appearance, so a decoration does not declare anything: a
+// `state` line for a name no row or `initial` line mentions is an error, not a new state.
+//
+//     state <name> [entry <action>] [exit <action>]
+//
+// At least one clause, `entry` before `exit`, each at most once, and two lines for one state
+// merge. A row that fires from A to B runs A's `exit`, then the row's own action, then B's
+// `entry` — the order statecharts use (Q13). A self-transition is an external one: it runs both.
+//
+// As with the kind names, this is carried beside the machine rather than inside it, so a caller
+// that does not care keeps using the narrower parse. `state_actions` comes back with one entry
+// per decorated state, in the order the file first mentions it.
+struct StateAction {
+    std::string state;
+    std::string enter; // empty when the file named none
+    std::string exit;  // empty when the file named none
+};
+
+std::optional<Machine> parse(std::string_view text, Error& error, std::vector<KindName>& kind_names,
+                             std::vector<StateAction>& state_actions);
+std::string dump(const Machine& m, const std::vector<KindName>& kind_names,
+                 const std::vector<StateAction>& state_actions);
+
 } // namespace fsmtable

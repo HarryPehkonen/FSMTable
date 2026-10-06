@@ -1,0 +1,14 @@
+version 1
+machine Door
+initial Closed
+kind open = 1
+kind close = 2
+kind knock = 3
+state Closed entry on_entry_closed exit on_exit_closed
+state Open entry on_entry_open exit on_exit_open
+state Broken entry on_entry_broken
+transition Closed --open--> Open action on_opening
+transition Open --open--> Open action on_already_open
+transition Open --close--> Closed
+transition Closed --knock--> Broken
+transition Broken --close--> Closed

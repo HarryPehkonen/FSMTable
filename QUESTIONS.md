@@ -3,9 +3,10 @@
 SPEC.md section 0: "If something is genuinely ambiguous, write the question into
 QUESTIONS.md and take the simplest reading rather than guessing elaborately." These are
 the only places I found a genuine choice to make — two in stage A (Q1, Q2), two in stage B
-(Q3, Q4), three in stage C (Q5, Q6, Q7), two in the generator that follows them (Q8, Q9) and
-two in the calculator example (Q10, Q11). Each is a candidate for the spec to settle in a
-later revision; none changes the frozen API, the frozen test names or the row format.
+(Q3, Q4), three in stage C (Q5, Q6, Q7), two in the generator that follows them (Q8, Q9),
+two in the calculator example (Q10, Q11), one in the named kinds addition (Q12) and two in
+the entry and exit addition (Q13, Q14). Each is a candidate for the spec to settle in a later
+revision; none changes the frozen API, the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
 
@@ -206,3 +207,38 @@ at the top anyway.
 **The alternative:** resolve in a second pass and report the use's line, matching Q2's ordering
 freedom. It costs the pending-use list and buys nothing that a declarations block at the top does
 not already give.
+
+## Q13 — Does a transition that stays in its state run the entry and exit clauses?
+
+Version 1 has no internal-transition syntax: the only way for a row to leave the machine where it
+is is to name the same state as `from` and `to` — `Entry --clear--> Entry`. Entry and exit actions
+make that row's meaning a real question.
+
+**Reading taken:** it is an external transition. The state is left and entered again, so the exit
+clause runs, then the row's action, then the entry clause. The row does name a target, and reading
+it as "stay, and run nothing extra" would require knowing that the two names are equal — a special
+case invented for this question alone. It is also what a reader of the file will expect, and the
+calculator depends on it: its `Entry --clear--> Entry` row is what runs `clear_all` at the start of
+a line.
+
+**The alternative:** treat a self-named row as internal, so neither clause runs, matching the UML
+distinction between an internal and an external transition. It is defensible statechart semantics,
+but the format has no way to *ask* for the external one, so a machine that needs the reset on every
+`clear` — the calculator does — could not be written.
+
+## Q14 — Does the initial state's entry clause run when the machine is created?
+
+`make<M>()` builds a machine and calls `setInitialState`, which is not a transition: the back end
+runs no action for it. So the initial state is entered, in the ordinary sense of the word, without
+its entry clause firing.
+
+**Reading taken:** nothing calls it. The generator emits the clause as an ordinary function —
+`enterInitial<M>()`, taking a placeholder event — and leaves the call to the caller, where the
+side effect is visible: a factory that fired an action would be a side effect hidden in a
+constructor, which is the kind of surprise SPEC.md section 0 asks to keep out. A machine whose
+initial state needs setup calls it once after `make<M>()`; one that does not never sees it.
+
+**The alternative:** call it inside `make<M>()`, which is what a statechart does when an object
+enters its initial state. It reads well until a caller creates a machine per line, per request or
+per test fixture and gets an unexpected action per construction — and the output would then depend
+on something the `.fsm` does not say.

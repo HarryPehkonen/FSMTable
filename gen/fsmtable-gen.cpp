@@ -142,6 +142,7 @@ struct Names {
     [[nodiscard]] std::string kind() const { return prefix + "Kind"; }
     [[nodiscard]] std::string kind_names() const { return prefix + "KindNames"; }
     [[nodiscard]] std::string kind_name_of() const { return prefix + "KindNameOf"; }
+    [[nodiscard]] std::string enter_initial() const { return "enterInitial" + prefix; }
     [[nodiscard]] std::string event() const { return prefix + "Event"; }
     [[nodiscard]] std::string state_names() const { return prefix + "StateNames"; }
     [[nodiscard]] std::string name_of() const { return prefix + "NameOf"; }
@@ -220,7 +221,8 @@ std::vector<int> kinds_of(const std::vector<const fsmtable::Transition*>& rows,
     return kinds;
 }
 
-std::vector<std::string> actions_of(const std::vector<const fsmtable::Transition*>& rows) {
+std::vector<std::string> actions_of(const std::vector<const fsmtable::Transition*>& rows,
+                                    const std::vector<fsmtable::StateAction>& state_actions) {
     std::vector<std::string> actions;
     for (const fsmtable::Transition* row : rows) {
         if (row->action.empty())
@@ -228,17 +230,119 @@ std::vector<std::string> actions_of(const std::vector<const fsmtable::Transition
         if (std::find(actions.begin(), actions.end(), row->action) == actions.end())
             actions.push_back(row->action);
     }
+    // Entry and exit clauses are actions too: declared here, so a name the file uses and the
+    // caller never defines is a link error like any other. Ordered by state name, the order the
+    // dump writes the state lines in.
+    std::vector<const fsmtable::StateAction*> decorated;
+    decorated.reserve(state_actions.size());
+    for (const fsmtable::StateAction& entry : state_actions) {
+        decorated.push_back(&entry);
+    }
+    std::sort(decorated.begin(), decorated.end(),
+              [](const fsmtable::StateAction* a, const fsmtable::StateAction* b) {
+                  return a->state < b->state;
+              });
+    for (const fsmtable::StateAction* entry : decorated) {
+        if (!entry->enter.empty()
+            && std::find(actions.begin(), actions.end(), entry->enter) == actions.end()) {
+            actions.push_back(entry->enter);
+        }
+        if (!entry->exit.empty()
+            && std::find(actions.begin(), actions.end(), entry->exit) == actions.end()) {
+            actions.push_back(entry->exit);
+        }
+    }
     return actions;
 }
+
+// One state's clauses, or empty when the file decorated nothing for it.
+std::string enter_of(const std::vector<fsmtable::StateAction>& state_actions,
+                     const std::string& state) {
+    for (const fsmtable::StateAction& entry : state_actions) {
+        if (entry.state == state)
+            return entry.enter;
+    }
+    return {};
+}
+
+std::string exit_of(const std::vector<fsmtable::StateAction>& state_actions,
+                    const std::string& state) {
+    for (const fsmtable::StateAction& entry : state_actions) {
+        if (entry.state == state)
+            return entry.exit;
+    }
+    return {};
+}
+
+// A generated function that runs one transition's exit, action and entry. `key` is the three
+// names, so two rows that do the same three things share one function.
+struct Wrapper {
+    std::string key;
+    std::string name;
+    std::vector<std::string> calls;
+};
 
 // ------------------------------------------------------------------------------- the header
 
 void emit_header(std::ostringstream& out, const Names& names, const fsmtable::Machine& machine,
-                 const std::vector<fsmtable::KindName>& kind_names, std::string_view source,
+                 const std::vector<fsmtable::KindName>& kind_names,
+                 const std::vector<fsmtable::StateAction>& state_actions, std::string_view source,
                  std::uint64_t canonical_fingerprint) {
     const std::vector<const fsmtable::Transition*> rows = canonical_order(machine);
     const std::vector<int> kinds = kinds_of(rows, kind_names);
-    const std::vector<std::string> actions = actions_of(rows);
+    const std::vector<std::string> actions = actions_of(rows, state_actions);
+
+    // Entry and exit composition (ENTRY_EXIT.md): the back end runs exactly one function per
+    // transition, so a row whose states are decorated points at a generated function that runs
+    // the source state's exit, the row's own action and the target state's entry. A row whose
+    // states carry no clause points straight at its action, which is what leaves every artifact
+    // without entry/exit byte for byte what it was.
+    std::vector<Wrapper> wrappers;
+    const auto taken = [&](const std::string& candidate) {
+        if (std::find(actions.begin(), actions.end(), candidate) != actions.end())
+            return true;
+        for (const Wrapper& wrapper : wrappers)
+            if (wrapper.name == candidate)
+                return true;
+        return false;
+    };
+    std::vector<std::string> row_action(rows.size());
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const fsmtable::Transition* row = rows[i];
+        const std::string exit = exit_of(state_actions, row->from);
+        const std::string enter = enter_of(state_actions, row->to);
+        if (exit.empty() && enter.empty()) {
+            row_action[i] = row->action.empty() ? "nullptr" : "&" + row->action;
+            continue;
+        }
+        Wrapper made;
+        if (!exit.empty())
+            made.calls.push_back(exit);
+        if (!row->action.empty())
+            made.calls.push_back(row->action);
+        if (!enter.empty())
+            made.calls.push_back(enter);
+        // The key is just the calls in order, built from them rather than beside them, so the
+        // two cannot drift apart.
+        for (const std::string& call : made.calls) {
+            made.key += call;
+            made.key += '\n';
+        }
+
+        std::size_t at = wrappers.size();
+        for (std::size_t w = 0; w < wrappers.size(); ++w) {
+            if (wrappers[w].key == made.key)
+                at = w;
+        }
+        if (at == wrappers.size()) {
+            const std::string base = row->from + "_leaving_to_" + row->to;
+            made.name = base;
+            for (int n = 2; taken(made.name); ++n)
+                made.name = base + "_" + std::to_string(n);
+            wrappers.push_back(made);
+        }
+        row_action[i] = "&" + wrappers[at].name;
+    }
 
     out << "// Generated by fsmtable-gen from " << source << " — DO NOT EDIT.\n"
         << "// Regenerate with: fsmtable-gen " << source << " -o <this file>\n"
@@ -288,6 +392,32 @@ void emit_header(std::ostringstream& out, const Names& names, const fsmtable::Ma
         out << "\n// Actions this machine calls. Define them in your own translation unit.\n";
         for (const std::string& action : actions)
             out << "void " << action << "(const " << names.event() << "& event);\n";
+    }
+
+    if (!wrappers.empty()) {
+        out << "\n// Entry and exit composition (ENTRY_EXIT.md): one function per distinct pair "
+               "of\n"
+            << "// state clauses and row action, because the back end runs one function per row.\n";
+        for (const Wrapper& wrapper : wrappers) {
+            out << "inline void " << wrapper.name << "(const " << names.event() << "& event) {\n";
+            for (const std::string& call : wrapper.calls)
+                out << "    " << call << "(event);\n";
+            out << "}\n";
+        }
+    }
+
+    const std::string initial_enter = enter_of(state_actions, machine.initial);
+    if (!initial_enter.empty()) {
+        out << "\n// The initial state's entry action — nothing calls it. The back end's\n"
+            << "// setInitialState is not a transition, and a factory with a side effect is the "
+               "kind\n"
+            << "// of surprise this exercise is against. Call it once after " << names.make()
+            << "() if the\n// state needs it; the event is a placeholder, because there is no "
+               "event.\n"
+            << "inline void " << names.enter_initial() << "(const " << names.event()
+            << "& event = {}) {\n"
+            << "    " << initial_enter << "(event);\n"
+            << "}\n";
     }
 
     out << "\n// The state names, for logs and for code -> text round trips.\n"
@@ -342,13 +472,13 @@ void emit_header(std::ostringstream& out, const Names& names, const fsmtable::Ma
         << "// The transition table: from, kind, refined, op, value, to, action.\n"
         << "inline constexpr std::array<fsmgine::compiled::Transition<" << names.state() << ", "
         << names.event() << ">, " << rows.size() << "> " << names.rows() << "{{\n";
-    for (const fsmtable::Transition* row : rows) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const fsmtable::Transition* row = rows[i];
         out << "    {" << names.state() << "::" << row->from << ", " << names.kind()
             << "::" << kind_member(row->kind, kind_names) << ", "
             << (row->has_when ? "true" : "false")
             << ", fsmgine::compiled::Op::" << op_name(row->when_op) << ", " << row->when_value
-            << ", " << names.state() << "::" << row->to << ", "
-            << (row->action.empty() ? "nullptr" : "&" + row->action) << "},\n";
+            << ", " << names.state() << "::" << row->to << ", " << row_action[i] << "},\n";
     }
     out << "}};\n"
         << "\n"
@@ -376,7 +506,8 @@ void emit_header(std::ostringstream& out, const Names& names, const fsmtable::Ma
 // emitted: the message names the offender and the line-free name, which is what a user needs to
 // fix the .fsm.
 bool check_names(const fsmtable::Machine& machine,
-                 const std::vector<fsmtable::KindName>& kind_names, std::string& complaint) {
+                 const std::vector<fsmtable::KindName>& kind_names,
+                 const std::vector<fsmtable::StateAction>& state_actions, std::string& complaint) {
     if (is_cpp_keyword(machine.name)) {
         complaint = "the machine name '" + machine.name + "' is a C++ keyword";
         return false;
@@ -391,6 +522,15 @@ bool check_names(const fsmtable::Machine& machine,
         if (is_cpp_keyword(entry.name)) {
             complaint = "the kind name '" + entry.name + "' is a C++ keyword";
             return false;
+        }
+    }
+    for (const fsmtable::StateAction& entry : state_actions) {
+        const std::vector<std::string> clauses{entry.enter, entry.exit};
+        for (const std::string& action : clauses) {
+            if (!action.empty() && is_cpp_keyword(action)) {
+                complaint = "the entry or exit action '" + action + "' is a C++ keyword";
+                return false;
+            }
         }
     }
     for (const fsmtable::Transition& row : machine.transitions) {
@@ -474,7 +614,8 @@ int main(int argc, char** argv) {
 
     fsmtable::Error error{0, ""};
     std::vector<fsmtable::KindName> kind_names;
-    const auto machine = fsmtable::parse(text, error, kind_names);
+    std::vector<fsmtable::StateAction> state_actions;
+    const auto machine = fsmtable::parse(text, error, kind_names, state_actions);
     if (!machine.has_value()) {
         std::cerr << "fsmtable-gen: " << input << ":" << error.line << ": " << error.message
                   << "\n";
@@ -482,7 +623,7 @@ int main(int argc, char** argv) {
     }
 
     std::string complaint;
-    if (!check_names(*machine, kind_names, complaint)) {
+    if (!check_names(*machine, kind_names, state_actions, complaint)) {
         std::cerr << "fsmtable-gen: " << input << ": " << complaint << "\n";
         return 1;
     }
@@ -495,8 +636,8 @@ int main(int argc, char** argv) {
     // The fingerprint covers the named canonical form: renaming a kind changes the emitted
     // header, so it has to change this too. A file that declares no names hashes exactly what it
     // always hashed, because the two dumps are the same text.
-    emit_header(header, names, *machine, kind_names, input,
-                fingerprint(fsmtable::dump(*machine, kind_names)));
+    emit_header(header, names, *machine, kind_names, state_actions, input,
+                fingerprint(fsmtable::dump(*machine, kind_names, state_actions)));
     const std::string rendered = header.str();
 
     if (output.empty()) {

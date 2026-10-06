@@ -120,7 +120,8 @@ if(FSMTABLE_BUILD_TESTS)
         corpus/guarded.fsm
         corpus/minimal.fsm
         tests/fixtures/refined_pair.fsm
-        tests/fixtures/named_kinds.fsm)
+        tests/fixtures/named_kinds.fsm
+        tests/fixtures/entry_exit.fsm)
     set(FSMTABLE_GENERATED_HEADERS "")
     foreach(fsm IN LISTS FSMTABLE_GENERATOR_INPUTS)
         get_filename_component(stem "${fsm}" NAME_WE)
@@ -145,7 +146,8 @@ if(FSMTABLE_BUILD_TESTS)
     target_include_directories(fsmTable_generator_tests PRIVATE "${FSMTABLE_GENERATED_DIR}")
     target_compile_definitions(fsmTable_generator_tests PRIVATE
         FSMTABLE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/corpus"
-        FSMTABLE_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+        FSMTABLE_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+        FSMTABLE_GENERATED_DIR="${FSMTABLE_GENERATED_DIR}")
     add_test(NAME fsmTable_generator_tests COMMAND fsmTable_generator_tests)
 
     # The generator's own failure paths and one positive shape check, as ctest cases: an input
@@ -175,6 +177,12 @@ if(FSMTABLE_BUILD_TESTS)
     target_link_libraries(fsmTable_kinds_tests PRIVATE fsmTable GTest::gtest_main)
     target_compile_options(fsmTable_kinds_tests PRIVATE ${FSMTABLE_WARNINGS})
     add_test(NAME fsmTable_kinds_tests COMMAND fsmTable_kinds_tests)
+
+    # Entry and exit actions (ENTRY_EXIT.md): its own binary too, for the same reason.
+    add_executable(fsmTable_state_actions_tests tests/state_actions_test.cpp)
+    target_link_libraries(fsmTable_state_actions_tests PRIVATE fsmTable GTest::gtest_main)
+    target_compile_options(fsmTable_state_actions_tests PRIVATE ${FSMTABLE_WARNINGS})
+    add_test(NAME fsmTable_state_actions_tests COMMAND fsmTable_state_actions_tests)
 
     add_test(NAME calculator_session
         COMMAND sh -c "\"$<TARGET_FILE:calculator>\" < \"${FSMTABLE_CALCULATOR_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_CALCULATOR_DIR}/input/session.expected\" -")
