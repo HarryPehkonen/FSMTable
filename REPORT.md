@@ -67,3 +67,35 @@
            preserves the machine's meaning, its set of states and its canonical text. The first
            draft of stage C's round-trip test asserted the opposite and failed. Alternative:
            preserve it — impossible without a `state` directive the canonical form does not have.
+
+## Appendix — the four additions after stage C
+
+The report above is what it was: the spec's three stages, delivered. Four additions followed, each
+one additive to the frozen sections in the shape stage B used, each with the whole gate over it:
+
+    addition                        commit                document
+    the generator (fsmtable-gen)    056495f               GENERATOR.md
+    the calculator example          39ba706               examples/calculator/README.md
+    named event kinds               23e4123 + b4e7f7e     NAMED_KINDS.md
+    entry and exit actions          a7d6dde               ENTRY_EXIT.md
+
+    Gate verdict line for the last of them (verbatim):
+    all 12 stage(s) passed in 155s
+    GATE PASSED
+
+Each one's evidence is the same three things, and together they are the reason the additions are
+additions rather than a second format:
+
+  * the frozen suite, the corpus and `RejectsVersionThatIsNotFirst` pass unchanged — `version 2`
+    stays rejected, so what changed is version 1's reader, not the version number;
+  * `tests/generator_test.cpp` still holds the traffic light's one action to `&on_red_green`, so an
+    artifact that had been respelled (named kinds) or composed (entry/exit) would fail it, and the
+    calculator's recorded session still diffs byte for byte after its seven `--clear-->` rows lost
+    their action clause to an entry clause;
+  * a sabotage per round, run and reverted: reversing the canonical order fails exactly the
+    canonical-order case, and inverting the entry/exit composition fails exactly the three
+    order-sensitive cases.
+
+QUESTIONS.md grew by Q12 (a kind name is declared before the row that uses it), Q13 (a row that
+stays put is an external transition) and Q14 (the factory does not run the initial state's entry
+clause) — three more readings, each with its alternative written up beside it.
