@@ -1,0 +1,11 @@
+# One row pair for the same from+kind: an unguarded fallback AND a guarded refinement — and the
+# unguarded one is written FIRST on purpose. The format reads the guarded row as refining the
+# unguarded one (QUESTIONS.md Q6), so the guarded row must win whenever its comparison passes,
+# even though the file lists it second. A generator that emitted rows in file order would make
+# `high` unreachable here, which is the whole reason this fixture exists.
+version 1
+machine RefinedPair
+initial A
+transition A --1--> B
+transition A --1--> C when ge 10 action high
+transition C --2--> A

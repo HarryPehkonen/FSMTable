@@ -3,8 +3,9 @@
 SPEC.md section 0: "If something is genuinely ambiguous, write the question into
 QUESTIONS.md and take the simplest reading rather than guessing elaborately." These are
 the only places I found a genuine choice to make — two in stage A (Q1, Q2), two in stage B
-(Q3, Q4) and three in stage C (Q5, Q6, Q7). Each is a candidate for the spec to settle in a
-later revision; none changes the frozen API, the frozen test names or the row format.
+(Q3, Q4), three in stage C (Q5, Q6, Q7) and two in the generator that follows them (Q8, Q9).
+Each is a candidate for the spec to settle in a later revision; none changes the frozen API,
+the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
 
@@ -118,3 +119,33 @@ how the distinction got noticed.
 
 **The alternative:** treat first-appearance order as preserved data — impossible without a
 `state` directive in the canonical form, which section 4 does not define.
+
+## Q8 — What should the generator do with a name that is a C++ keyword?
+
+The format accepts any identifier, so `machine KeywordState` / `initial new` / `transition new
+--1--> Done` parses cleanly. As C++ it cannot: the state name would have to become an enumerator,
+and an action name a function.
+
+**Reading taken:** refuse the file — exit 1, naming the offender and its role (`the state name
+'new' is a C++ keyword`). The alternative, mangling to `new_`, makes the header compile at the
+cost of the correspondence the generator exists to preserve: the artifact would no longer say what
+the text says, and a code → text round trip would emit the mangled spelling as a state name and
+fail to parse it back. Refusing costs one edit to the `.fsm` and keeps the mapping total.
+
+**The alternative:** a documented mangling scheme (trailing underscore, or a `k` prefix). Cheap
+for the generator and wrong for the round trip.
+
+## Q9 — A literal rows table, or FSMgine builder calls?
+
+`fsmgine::compiled::Machine` accepts either: the constructor takes a pre-built rows vector, and the
+chain (`from()…to()…when()…action()`) builds one internally.
+
+**Reading taken:** emit the table. One row per line means the generated file diffs like the `.fsm`
+it came from; the order is visible in the artifact rather than implied by builder state, which is
+what makes the canonical-order property checkable at all (`generator_test.cpp` reads
+`rows[0].refined`); and a table is data that a code → text direction can read back without
+replaying a builder. Builder chains are not wrong — they were probed and behave as documented —
+they are simply less readable and less checkable here.
+
+**The alternative:** emit the chain, one statement per row: shorter to write, and it would hide
+the canonical order inside a sequence of calls with a mutable builder between them.

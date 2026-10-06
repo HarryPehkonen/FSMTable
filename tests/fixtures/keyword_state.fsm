@@ -1,0 +1,7 @@
+# This file is VALID in the format — `new` matches the identifier pattern — and unusable as C++:
+# the state name would become an enumerator, and `new` is a keyword. The generator must refuse it
+# with a message naming the offender rather than emit a header that does not compile.
+version 1
+machine KeywordState
+initial new
+transition new --1--> Done

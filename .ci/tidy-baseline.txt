@@ -1,10 +1,10 @@
 # Accepted clang-tidy findings — key = path:check, line-blind (see tools/ci.sh tidy_key).
 #
-# Two entries, both findings on text this repo is not free to change. Everything else the
-# lint stage reports was fixed in the code rather than accepted here: the 48
-# unchecked-optional-access findings in the tests, the vararg in the fuzz target, the
-# reinterpret_cast and the cast-through-void it invited, and the pointer arithmetic in the
-# integer scanner (that scanner is now index-based).
+# Three entries: two are findings on text this repo is not free to change, one is a property of
+# the C++ entry point. Everything else the lint stage reports was fixed in the code rather than
+# accepted here: the 48 unchecked-optional-access findings in the tests, the vararg in the fuzz
+# target, the reinterpret_cast and the cast-through-void it invited, and the pointer arithmetic
+# in the integer scanner (that scanner is now index-based).
 #
 #   src/fsmtable.hpp:performance-enum-size
 #       `enum class Op { Eq, Lt, Le, Gt, Ge }` is frozen by SPEC.md section 4 — the
@@ -16,5 +16,13 @@
 #       pointer at all — even `data[i]` — is pointer arithmetic by this check's definition,
 #       so the finding is a property of the ABI, not of the code. FSMgine's baseline
 #       carries the same key for the same reason.
+#
+#   gen/fsmtable-gen.cpp:cppcoreguidelines-pro-bounds-pointer-arithmetic
+#       The same shape, one level up: a command line arrives as (int argc, char** argv), and
+#       reading argv[i] at all — never mind the argv[++i] the option loop also needs — is
+#       pointer arithmetic by this check's definition. No argument-reading main avoids it, so
+#       this is the honest place to record it rather than behind a cast that would silence
+#       the check by hiding the array.
 fuzz/fuzz_fsmtable.cpp: warning: do not use pointer arithmetic [cppcoreguidelines-pro-bounds-pointer-arithmetic]
+gen/fsmtable-gen.cpp: warning: do not use pointer arithmetic [cppcoreguidelines-pro-bounds-pointer-arithmetic]
 src/fsmtable.hpp: warning: enum 'Op' uses a larger base type ('int', size: 4 bytes) than necessary for its value set, consider using 'std::uint8_t' (1 byte) as the base type to reduce its size [performance-enum-size]
