@@ -24,6 +24,20 @@ configure_file(
 option(FSMTABLE_BUILD_TESTS "Build the GTest suite" ON)
 option(FSMTABLE_BUILD_FUZZING "Build the libFuzzer target (clang only)" OFF)
 
+# Stage C's oracle (SPEC.md section 8): the differential cross-check holds this library's
+# reading of a machine against FSMgine 2.1.0's compiled back end. That is an independent
+# library, so its headers have to exist, and the gate says so rather than quietly skipping the
+# stage. Only headers are used, and nothing is built inside FSMgine's own tree.
+set(FSMTABLE_FSMGINE_DIR "$ENV{HOME}/hermes-workspace/FSMgine" CACHE PATH
+    "FSMgine checkout whose headers the stage C differential test compiles against")
+set(FSMTABLE_FSMGINE_HEADER "${FSMTABLE_FSMGINE_DIR}/include/FSMgine/compiled/Machine.hpp")
+if(NOT EXISTS "${FSMTABLE_FSMGINE_HEADER}")
+    message(FATAL_ERROR
+        "SPEC.md section 8's stage C cross-check needs FSMgine 2.1.0's headers, and "
+        "${FSMTABLE_FSMGINE_HEADER} does not exist. "
+        "Point -DFSMTABLE_FSMGINE_DIR=<path-to-FSMgine> at a checkout.")
+endif()
+
 add_library(fsmTable src/fsmtable.cpp)
 target_include_directories(fsmTable PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_options(fsmTable PRIVATE ${FSMTABLE_WARNINGS})
@@ -42,6 +56,18 @@ if(FSMTABLE_BUILD_TESTS)
     # it — the test below is the one translation unit that must compile it.
     target_include_directories(fsmTable_tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
     add_test(NAME fsmTable_tests COMMAND fsmTable_tests)
+
+    # Stage C: the differential oracle against FSMgine. Its include directory is SYSTEM because
+    # a third-party header's warnings are not this repo's to fix, and the header is used exactly
+    # as FSMgine ships it.
+    add_executable(fsmTable_differential tests/differential_test.cpp)
+    target_link_libraries(fsmTable_differential PRIVATE fsmTable GTest::gtest_main)
+    target_compile_options(fsmTable_differential PRIVATE ${FSMTABLE_WARNINGS})
+    target_include_directories(fsmTable_differential SYSTEM PRIVATE
+        "${FSMTABLE_FSMGINE_DIR}/include")
+    target_compile_definitions(fsmTable_differential
+        PRIVATE FSMTABLE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/corpus")
+    add_test(NAME fsmTable_differential COMMAND fsmTable_differential)
 endif()
 
 # The fuzz target is written against libFuzzer's entry point, so it can only be LINKED

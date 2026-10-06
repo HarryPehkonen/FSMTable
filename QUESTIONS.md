@@ -2,9 +2,9 @@
 
 SPEC.md section 0: "If something is genuinely ambiguous, write the question into
 QUESTIONS.md and take the simplest reading rather than guessing elaborately." These are
-the only places I found a genuine choice to make — two in stage A (Q1, Q2) and two in
-stage B (Q3, Q4). Each is a candidate for the spec to settle in a later revision; none
-changes the frozen API, the frozen test names or the row format.
+the only places I found a genuine choice to make — two in stage A (Q1, Q2), two in stage B
+(Q3, Q4) and three in stage C (Q5, Q6, Q7). Each is a candidate for the spec to settle in a
+later revision; none changes the frozen API, the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
 
@@ -67,3 +67,54 @@ would make the functions total over hand-built machines as well, but it would ha
 outside `states` (breaking the first-appearance ordering section 8 fixes) and it would need a
 second reading for an undeclared `from`. The narrower reading keeps one contract for both
 functions, and a test pins it.
+
+## Q5 — What is the second trace in stage C's cross-check?
+
+Section 8 asks for "an identical trace (state after every event, plus the action log)" against
+FSMgine. Stages A and B define no execution semantics — the frozen section 4 API is `parse`,
+`dump` and (from stage B) two analyses — so that framework has to come from somewhere, and
+section 8 does not name a function of this library that produces it.
+
+**Reading taken:** the test carries a plain reference interpreter — for the current state and
+the event's kind, the guarded row fires if its comparison passes, otherwise the unguarded row
+for the same pair, otherwise nothing moves — and FSMgine's compiled back end is the independent
+implementation it is compared against. That is what makes it a differential oracle rather than a
+self-check. No public API is added: a runner on `Machine` would be a change to the frozen
+section 4 surface, and section 8 does not ask for one.
+
+**The alternative:** add an execution function to the library and compare library to library.
+That is a spec revision rather than an implementation decision, and it would push this
+harness's reading of the semantics into the published API.
+
+## Q6 — For one (from, kind), does the guarded row refine the unguarded row regardless of the order they appear in?
+
+Rule 9 allows exactly one unguarded and one guarded row per (from, kind), and the file may
+write them in either order.
+
+**Reading taken:** precedence — the guarded row is the refinement of the pair and is tried
+first, wherever the file put it. Two things point the same way: rule 9's own wording ("A
+machine may refine at most one value slot"), and `dump`'s canonical order, which places guarded
+before unguarded *within* a (from, kind) — an order that only means something under
+first-match-wins. Handing FSMgine the canonical order is therefore what makes the two
+implementations comparable at all.
+
+**The alternative:** strict file order, under which an unguarded row written first would shadow
+the guarded row written after it — making behaviour depend on an order the canonical form then
+discards.
+
+## Q7 — Does `dump` preserve the order of `states`?
+
+`Machine::states` is "first-appearance order, unique", but the canonical form declares no
+states: they are re-derived from `initial` and from the sorted rows. So
+`parse(dump(parse(t)))->states` is in a different order from `parse(t)->states` whenever t's
+rows are not already canonical. Section 5's oracle asks for
+`dump(parse(dump(parse(t)))) == dump(parse(t))` — stability, which holds — and section 7's rules
+hold either way. Nothing in the spec requires the vector to survive a round trip.
+
+**Reading taken:** a round trip preserves the machine's meaning, its set of states and its
+canonical text, and not the file's original first-appearance order. Stage C's round-trip test
+asserts exactly that. The first draft of that test asserted the opposite and failed, which is
+how the distinction got noticed.
+
+**The alternative:** treat first-appearance order as preserved data — impossible without a
+`state` directive in the canonical form, which section 4 does not define.
