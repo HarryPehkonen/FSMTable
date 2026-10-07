@@ -4,35 +4,9 @@
   "revision": "98e517d3655919c44d0a8df936b16c430281acfe",
   "recorded_at": "2026-10-06",
   "record_kind": "retroactive",
-  "record_note": "Written 2026-10-06, after the fact: this repo was wired by hand from the kit's C++ templates (first commit d27b5a5, the Stage-A scaffold) before this record existed, so `revision` is NOT the exact copy point \u2014 it is the newest kit commit any recorded file was taken from (d888e29, the hook-tier fix), and the earlier entries came from kit revisions between then and now. Kind is `retroactive` for that reason. The two fixes in `adopted_fixes` are the two probes this copy carries; every other kit fix is neither claimed nor declined, which the record checker reports with the result of running the kit's probe against this gate \u2014 silence is not a claim. Rule that keeps this file true: any commit that edits a copied artifact updates that artifact's repo_sha256 in the same commit, and a commit that moves `revision` re-reads every kit_sha256. On 2026-10-06 the carried copy of tools/kit-probes/gitignore-footprint.sh was replaced with the kit's verbatim probe at 742ee17 (the probe that derives the footprint list from the gate under test) \u2014 the copy this repo had was hand-adapted, which a claim cannot prove. Its `from_revision` names that probe's own revision for the same reason; the recipe it guards came from acced82 (D15). **2026-10-06, probe re-sync:** the copy of tools/kit-probes/hook-tiers-agree.sh here was the one taken at d888e29. The probe gained two refinements while the fleet was ported -- it reads a full tier single-sourced as CI_DEFAULT_STAGES (four sibling repos spell it that way and have no list in their push hook at all), and it reads the gate's own --list before calling a stage a decoration, because JSOM's `coverage` is declared opt-in. Without them the probe reported those repos as having no tiers. The copy is the kit's current file, revision and adopted_fixes[hook-tiers-agree].from_revision both name 919006e, and every kit_sha256 is re-read at that copy point.",
-  "adopted_fixes": [
-    {
-      "name": "gitignore-footprint",
-      "from_revision": "742ee17fd9d7fce5a95b81e283b1254dfb1d9d60",
-      "probe": "probes/gitignore-footprint.sh",
-      "adopted_in": "d27b5a5"
-    },
-    {
-      "name": "hook-tiers-agree",
-      "from_revision": "919006ecf90cfcc7627e008c6bee165754962d93",
-      "probe": "probes/hook-tiers-agree.sh",
-      "adopted_in": "695eb3d"
-    },
-    {
-      "name": "format-checks-staged",
-      "from_revision": "96719c44d7e20816a440bce22a8260bb7e15f639",
-      "probe": "probes/format-checks-staged.sh",
-      "adopted_in": "7b605db"
-    }
-  ],
+  "record_note": "Written 2026-10-06, after the fact: this repo was wired by hand from the kit's C++ templates (first commit d27b5a5, the Stage-A scaffold) before this record existed, so `revision` is NOT the exact copy point — it is the newest kit commit any recorded file was taken from (d888e29, the hook-tier fix), and the earlier entries came from kit revisions between then and now. Kind is `retroactive` for that reason. The two fixes in `adopted_fixes` are the two probes this copy carries; every other kit fix is neither claimed nor declined, which the record checker reports with the result of running the kit's probe against this gate — silence is not a claim. Rule that keeps this file true: any commit that edits a copied artifact updates that artifact's repo_sha256 in the same commit, and a commit that moves `revision` re-reads every kit_sha256. On 2026-10-06 the carried copy of tools/kit-probes/gitignore-footprint.sh was replaced with the kit's verbatim probe at 742ee17 (the probe that derives the footprint list from the gate under test) — the copy this repo had was hand-adapted, which a claim cannot prove. Its `from_revision` names that probe's own revision for the same reason; the recipe it guards came from acced82 (D15). **2026-10-06, probe re-sync:** the copy of tools/kit-probes/hook-tiers-agree.sh here was the one taken at d888e29. The probe gained two refinements while the fleet was ported -- it reads a full tier single-sourced as CI_DEFAULT_STAGES (four sibling repos spell it that way and have no list in their push hook at all), and it reads the gate's own --list before calling a stage a decoration, because JSOM's `coverage` is declared opt-in. Without them the probe reported those repos as having no tiers. The copy is the kit's current file, revision and adopted_fixes[hook-tiers-agree].from_revision both name 919006e, and every kit_sha256 is re-read at that copy point. **2026-10-06, card t_075c0a6f (KitCI fleet batch 2 of 3):** the gate is no longer a bash script. tools/ci.sh and the probes under tools/kit-probes/ are DELETED; the gate is the tracked gate.toml (11 stages, tiers fast/full) run by kit-ci, plus scripts/gate-env.sh, scripts/gate.sh and one scripts/<stage>.sh per stage — all of them this repo's own files, which is why none appears in files[] below. files[] loses tools/ci.sh and every tools/kit-probes/*.sh entry: the artifacts are gone, so no hash can describe them. The kit fixes those probes guarded move from adopted_fixes to declined_fixes — not because the fixes were declined, but because the artifact they CHECK no longer exists (each probe is written against a single bash gate file; measured against scripts/gate.sh, see INCIDENTS.md for the verdicts). The contracts did not go: each one has a named home, listed in INCIDENTS.md entry by entry. .githooks/pre-commit and .githooks/pre-push are RE-HASHED because this commit edits them: they now NAME a tier (--tier fast, and --tier full with CI_REQUIRE_CLEAN=1, the old --require-clean flag moved into the environment), and their branch for this repo's own tools/ci.sh is gone with that file. `revision` and every other entry are UNCHANGED: nothing here came from the kit, and being behind the kit is not a failure.",
+  "adopted_fixes": [],
   "files": [
-    {
-      "repo_path": "tools/ci.sh",
-      "kit_path": "templates/cpp/ci.sh",
-      "repo_sha256": "a1b44fa0f1afaae51622df7c6fa4366a636802d7b2e6aed98a0af4ee196776f0",
-      "adapted": true,
-      "adapted_why": "stages ADDED to the kit's template: fuzz (the libFuzzer stage SPEC.md requires) and lint, the spec's name for the tidy stage this gate calls `tidy`; the tidy baseline comparison is the kit's current tidy_key form. Since 2026-10-06 the two hook tiers are CI_FAST_STAGES/CI_FULL_STAGES (kit d888e29). Its header lists the deviations, so a sync should diff this file, never overwrite it."
-    },
     {
       "repo_path": "tools/release.sh",
       "kit_path": "templates/cpp/release.sh",
@@ -42,27 +16,27 @@
     {
       "repo_path": ".githooks/pre-commit",
       "kit_path": "templates/hooks/pre-commit",
-      "repo_sha256": "a103006659d79f15077faeabca37f6a9e2ac3bc677a51c7d7e0209b956fb3d12",
+      "repo_sha256": "b8f25123c908669e9ad177ee7a14b147333a9844cfecba5992aeda699aed70cd",
       "adapted": true,
       "adapted_why": "kit script with this repo's measured order and a fast tier of `format build tests`; since 2026-10-06 it names the tier instead of a stage list."
     },
     {
       "repo_path": ".githooks/pre-push",
       "kit_path": "templates/hooks/pre-push",
-      "repo_sha256": "ac5f2e2038a2a15cb2e7ac6a2bb117572328fb27a7b4bc337ea13a0685cdb8b3",
+      "repo_sha256": "3f53d11eb6e0eec247a0d91893c701d4f740c635a8130c76232c1cf3f74f93b5",
       "adapted": true,
       "adapted_why": "kit script with this repo's full tier, named as the tier (`--require-clean full`) since 2026-10-06; the reason a repo's list is its own is in its header."
     },
     {
       "repo_path": ".ci.env.example",
       "kit_path": "templates/cpp/.ci.env.example",
-      "repo_sha256": "eee5264aaa1b120fcd76685879559aae15bbf0fe39c45cfb0c4726d026709556",
-      "adapted": false
+      "repo_sha256": "3b9f8c4538cdbb6f1b7b627e9243239feec5ed6e0913953774268aaefd60de02",
+      "adapted": true
     },
     {
       "repo_path": "INCIDENTS.md",
       "kit_path": "INCIDENTS.md",
-      "repo_sha256": "d330b57d1f5d2687540e1bb6c4c1c316dfe6b281d655afc78a777bdc0fbd71f3",
+      "repo_sha256": "b44b23acdb8f071ff162817966aff70a169366eb25318684853c31ca0c70fde9",
       "adapted": true,
       "adapted_why": "this repo's own log, created 2026-10-06 because the copied hooks ask for it; the kit's file is the kit's history, not this repo's."
     },
@@ -72,24 +46,26 @@
       "repo_sha256": "3d6e9470697c7355d448795b0e0d204df7b54f98832793fa960e10072f2e6589",
       "adapted": true,
       "adapted_why": "the kit's slash-free gate-footprint recipe (D15) plus this repo's own entries; the recipe is what gitignore-footprint guards."
+    }
+  ],
+  "declined_fixes": [
+    {
+      "name": "format-checks-staged",
+      "probe": "probes/format-checks-staged.sh",
+      "why": "not applicable: it guards the kit's templates/cpp/ci.sh, and this repo no longer carries a fork of it — the gate is gate.toml (11 stages) run by kit-ci, and the probe is written against the shape of a single bash gate file, which it greps or sources. Measured 2026-10-06 after the conversion: run against the new entry point scripts/gate.sh it reads GREEN. The contract it held did not go — see the 2026-10-06 entry in INCIDENTS.md and the paragraph in record_note for where it lives now.",
+      "from_revision": "96719c44d7e20816a440bce22a8260bb7e15f639"
     },
     {
-      "repo_path": "tools/kit-probes/gitignore-footprint.sh",
-      "kit_path": "probes/gitignore-footprint.sh",
-      "repo_sha256": "c82f39600ababb150353543f57b334f8f0c6fa50620b988e7d930927ee7e3fd9",
-      "adapted": false
+      "name": "gitignore-footprint",
+      "probe": "probes/gitignore-footprint.sh",
+      "why": "not applicable: it guards the kit's templates/cpp/ci.sh, and this repo no longer carries a fork of it — the gate is gate.toml (11 stages) run by kit-ci, and the probe is written against the shape of a single bash gate file, which it greps or sources. Measured 2026-10-06 after the conversion: run against the new entry point scripts/gate.sh it reads GREEN. The contract it held did not go — see the 2026-10-06 entry in INCIDENTS.md and the paragraph in record_note for where it lives now.",
+      "from_revision": "742ee17fd9d7fce5a95b81e283b1254dfb1d9d60"
     },
     {
-      "repo_path": "tools/kit-probes/hook-tiers-agree.sh",
-      "kit_path": "probes/hook-tiers-agree.sh",
-      "repo_sha256": "736481101f4b9b4ce4379048c0be9c165b883ba7e27b424b3864aa32725564d1",
-      "adapted": false
-    },
-    {
-      "repo_path": "tools/kit-probes/format-checks-staged.sh",
-      "kit_path": "probes/format-checks-staged.sh",
-      "repo_sha256": "513e9231c31cbc9cb2faa0576fcbc7459f75967b79654825ffc8a648ab29c657",
-      "adapted": false
+      "name": "hook-tiers-agree",
+      "probe": "probes/hook-tiers-agree.sh",
+      "why": "not applicable: it guards the kit's templates/cpp/ci.sh, and this repo no longer carries a fork of it — the gate is gate.toml (11 stages) run by kit-ci, and the probe is written against the shape of a single bash gate file, which it greps or sources. Measured 2026-10-06 after the conversion: run against the new entry point scripts/gate.sh it reads RED. The contract it held did not go — see the 2026-10-06 entry in INCIDENTS.md and the paragraph in record_note for where it lives now.",
+      "from_revision": "919006ecf90cfcc7627e008c6bee165754962d93"
     }
   ]
 }

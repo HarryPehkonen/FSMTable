@@ -35,8 +35,8 @@ and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not
 
 ## Quick start
 
-    ./tools/ci.sh                     # the whole gate, 12 stages, ~2-3 minutes
-    ./tools/ci.sh build tests         # the fast loop while working
+    ./scripts/gate.sh                     # the whole gate, 12 stages, ~2-3 minutes
+    ./scripts/gate.sh --tier fast         # the fast loop while working
 
     ./build/fsmtable-gen my.fsm -o my.hpp      # or write the header to stdout
     ./build/calculator                         # the first worked example: a line in, an answer out
