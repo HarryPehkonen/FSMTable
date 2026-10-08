@@ -3,9 +3,9 @@
 //
 // This is the example that uses the LIBRARY without the generator: nothing is generated here, and
 // no machine is built at compile time. It is the smallest useful tool you can build on this format
-// — a formatter, a checker and a tracer for .fsm files, in about five hundred lines — and it is
-// the only place in this repository where the analyses are used by something other than their own
-// tests. Two of them are SPEC.md section 8's; the third is the addition beside them.
+// — a formatter, a checker, a tracer and a diagrammer for .fsm files, in about six hundred lines —
+// and it is the only place in this repository where the analyses are used by something other than
+// their own tests. Two of them are SPEC.md section 8's; the third is the addition beside them.
 //
 // Exit codes, the same convention as fsmtable-gen: 0 nothing to report, 1 the file could not be
 // read, a state is unreachable, or a traced event matched no row, 2 the command line is wrong. A
@@ -16,6 +16,13 @@
 // a `when` clause against the event's own value, and reports the exit/action/entry clauses
 // ENTRY_EXIT.md composes; it never invents a value, and a clock, a socket or a retry count stays
 // the caller's (examples/protocol/README.md). An event the table has no row for stops the walk.
+//
+// `--graph` is the second projection, beside `--canonical`: it writes the table as a Mermaid
+// `stateDiagram-v2` — a node per state with its entry/exit clauses in the description, an edge per
+// row labelled with its kind, `when` clause and action, the initial state marked with `[*]`, and
+// every sink classed. Like `--canonical` it projects rather than reports, so it exits 0 whatever
+// the analyses find. The node ids are positional (`s0`, `s1`, …) because a state may legally be
+// named `state` or `end`, which a state diagram reads as syntax.
 #include "fsmtable.hpp"
 
 #include <cctype>
@@ -37,13 +44,17 @@ void usage(std::ostream& out) {
         << "  fsmtable-inspect --canonical <file.fsm>  write the canonical form to stdout\n"
         << "  fsmtable-inspect --trace <file.fsm> <event>...\n"
         << "                                           walk the table over those events\n"
+        << "  fsmtable-inspect --graph <file.fsm>      draw the machine as a Mermaid state "
+           "diagram\n"
         << "  fsmtable-inspect --help\n"
         << "\n"
         << "An event is a kind — a declared kind name, or a number 0..255 — optionally followed\n"
         << "by =<int>, the value a `when` clause is compared against. No = means 0.\n"
         << "\n"
         << "Exit codes: 0 nothing to report, 1 the file could not be read, a state is\n"
-        << "unreachable, or a traced event matched no row, 2 the command line is wrong.\n";
+        << "unreachable, or a traced event matched no row, 2 the command line is wrong.\n"
+        << "--canonical and --graph project the machine instead of reporting on it, so they\n"
+        << "exit 0 whatever the analyses find.\n";
 }
 
 bool read_file(const std::string& path, std::string& text) {
@@ -366,11 +377,111 @@ int trace_run(const std::string& path, const fsmtable::Machine& machine,
     return 0;
 }
 
+// ---------------------------------------------------------------- the graph
+
+// The `when` operator the way the format spells it (SPEC.md rule 6). The library's own `op_text`
+// lives in the internal detail header, which an example that reads the public API does not reach
+// for; the five names are the format's, and spelled the way the frozen reader checks them.
+std::string op_label(fsmtable::Op op) {
+    switch (op) {
+    case fsmtable::Op::Eq:
+        return "eq";
+    case fsmtable::Op::Lt:
+        return "lt";
+    case fsmtable::Op::Le:
+        return "le";
+    case fsmtable::Op::Gt:
+        return "gt";
+    case fsmtable::Op::Ge:
+        return "ge";
+    }
+    return "";
+}
+
+// The mermaid id of a state: s0, s1, … in the machine's first-appearance order. The state's NAME
+// cannot be the id — `state`, `note`, `direction` and `end` are all legal state names and all
+// syntax to a state diagram — so the id is positional and the name is the description, the shape
+// KitCI's --graph gives its own nodes.
+std::string state_id(std::size_t index) { return "s" + std::to_string(index); }
+
+// Which id a state has: its index in the machine's own order. Every name here comes from `initial`
+// or a row's own ends, and the parser declares all three, so a miss cannot happen for a machine
+// the parser produced — the 0 is a floor, like locate_row's line 0, not a case being handled.
+std::size_t state_index(const std::vector<std::string>& states, const std::string& name) {
+    for (std::size_t i = 0; i < states.size(); ++i) {
+        if (states[i] == name)
+            return i;
+    }
+    return 0;
+}
+
+// The table drawn as a Mermaid `stateDiagram-v2`: the second projection, beside the canonical form,
+// and for the same reason — it writes nothing back and reports nothing, so it returns 0 whatever
+// the analyses would have found. What it draws is what `parse` read, in the machine's own order:
+// states as they first appear, rows as the file wrote them. The one analysis it uses is
+// `sink_states`, because a sink is the one finding a picture can carry.
+void graph_run(const std::string& path, const fsmtable::Machine& machine,
+               const std::vector<fsmtable::KindName>& names,
+               const std::vector<fsmtable::StateAction>& state_actions) {
+    std::cout << "stateDiagram-v2\n";
+    std::cout << "    %% " << path << ": " << machine.name << " — " << machine.states.size()
+              << " state(s), " << machine.transitions.size() << " row(s)\n";
+    std::cout << "    %% a projection of the table: entry and exit are state descriptions, guards "
+                 "and actions are edge labels\n";
+
+    // One node per declared state, so a state no row touches still appears. The entry and exit
+    // clauses are the node's description (ENTRY_EXIT.md's clauses belong to the state, not a row);
+    // a state that carries neither is just its name, and emits nothing extra.
+    for (std::size_t index = 0; index < machine.states.size(); ++index) {
+        const std::string& state = machine.states[index];
+        std::cout << "    state \"" << state;
+        const fsmtable::StateAction* decorated = find_state_action(state_actions, state);
+        if (decorated != nullptr) {
+            if (!decorated->enter.empty())
+                std::cout << "<br/>entry " << decorated->enter;
+            if (!decorated->exit.empty())
+                std::cout << "<br/>exit " << decorated->exit;
+        }
+        std::cout << "\" as " << state_id(index) << "\n";
+    }
+
+    std::cout << "    [*] --> " << state_id(state_index(machine.states, machine.initial)) << "\n";
+
+    // One edge per row, labelled with the kind and then the row's own clauses, in the order a row
+    // states them: the `when` value and the action. Two rows for one (from, kind) — the guarded one
+    // and its fallback (rule 9) — are two edges, which is what the table holds.
+    for (const fsmtable::Transition& row : machine.transitions) {
+        std::cout << "    " << state_id(state_index(machine.states, row.from)) << " --> "
+                  << state_id(state_index(machine.states, row.to)) << " : "
+                  << kind_label(row.kind, names);
+        if (row.has_when)
+            std::cout << " when " << op_label(row.when_op) << " " << row.when_value;
+        if (!row.action.empty())
+            std::cout << " / " << row.action;
+        std::cout << "\n";
+    }
+
+    // A sink is the one analysis a picture can carry, so it is the one thing drawn that the rows
+    // alone do not say. A machine with no sink emits no style at all.
+    const std::vector<std::string> sinks = fsmtable::sink_states(machine);
+    if (!sinks.empty()) {
+        std::cout << "    classDef sink fill:#3a0b0b,stroke:#f87171,color:#e2e8f0\n";
+        std::cout << "    class ";
+        for (std::size_t i = 0; i < sinks.size(); ++i) {
+            if (i > 0)
+                std::cout << ", ";
+            std::cout << state_id(state_index(machine.states, sinks[i]));
+        }
+        std::cout << " sink\n";
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     bool canonical = false;
     bool trace = false;
+    bool graph = false;
     std::vector<std::string> positional;
     for (int i = 1; i < argc; ++i) {
         // A command line arrives as (int argc, char** argv), and reading argv[i] at all is pointer
@@ -383,6 +494,8 @@ int main(int argc, char** argv) {
             canonical = true;
         } else if (arg == "--trace") {
             trace = true;
+        } else if (arg == "--graph") {
+            graph = true;
         } else if (arg == "--help" || arg == "-h") {
             usage(std::cout);
             return 0;
@@ -395,10 +508,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    // One mode at a time: --canonical writes the machine back out, --trace walks it, and the
-    // default reports on it.
-    if (canonical && trace) {
-        std::cerr << "fsmtable-inspect: --canonical and --trace are one mode each\n";
+    // One mode at a time: --canonical writes the machine back out, --trace walks it, --graph draws
+    // it, and the default reports on it.
+    const int modes = (canonical ? 1 : 0) + (trace ? 1 : 0) + (graph ? 1 : 0);
+    if (modes > 1) {
+        std::cerr << "fsmtable-inspect: --canonical, --trace and --graph are one mode each\n";
         usage(std::cerr);
         return 2;
     }
@@ -453,6 +567,13 @@ int main(int argc, char** argv) {
 
     if (canonical) {
         std::cout << fsmtable::dump(machine, kind_names, state_actions);
+        return 0;
+    }
+
+    if (graph) {
+        // A projection, like --canonical: it draws the machine the table describes and reports
+        // nothing of its own, so there is no code to return but 0.
+        graph_run(path, machine, kind_names, state_actions);
         return 0;
     }
 

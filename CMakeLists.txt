@@ -273,6 +273,48 @@ if(FSMTABLE_BUILD_TESTS)
     add_test(NAME inspect_trace_is_one_mode
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --canonical --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" number > /dev/null 2>&1; [ $? -eq 2 ]")
 
+    # --graph: the table drawn as a Mermaid stateDiagram-v2. The third projection, beside the
+    # summary's findings and --canonical's text — it writes nothing back and reports nothing, so it
+    # exits 0 and these cases pin the DRAWING: the initial marker, the state descriptions, a guard
+    # and an action on an edge, a sink's class. Its bytes are pinned exactly by
+    # tools/check-doc-claims.sh, which re-runs the invocation the inspector README documents and
+    # diffs the output line for line — the same check KitCI v1.1 gives its own --graph.
+    add_test(NAME inspect_graph_draws_the_machine
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_graph_draws_the_machine PROPERTIES PASS_REGULAR_EXPRESSION
+        "stateDiagram-v2")
+    add_test(NAME inspect_graph_marks_the_initial_state
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_graph_marks_the_initial_state PROPERTIES PASS_REGULAR_EXPRESSION
+        "\\[\\*\\] --> s0")
+    add_test(NAME inspect_graph_annotates_entry_and_exit
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_graph_annotates_entry_and_exit PROPERTIES PASS_REGULAR_EXPRESSION
+        "state \"SynSent<br/>entry arm_timer<br/>exit cancel_timer\" as s1")
+    add_test(NAME inspect_graph_labels_a_guarded_edge
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_graph_labels_a_guarded_edge PROPERTIES PASS_REGULAR_EXPRESSION
+        "s1 --> s1 : tick when ge 1000 / retransmit")
+    add_test(NAME inspect_graph_marks_a_sink
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_graph_marks_a_sink PROPERTIES PASS_REGULAR_EXPRESSION
+        "class s3 sink")
+    # Byte-stable: two runs over the same file are the same bytes, the property KitCI's graph tests
+    # pin with two renders of one config. The non-empty guard keeps an absent tool from passing
+    # vacuously (the class of vacuity REPORT.md records for the exit-code-only cases).
+    add_test(NAME inspect_graph_is_byte_stable
+        COMMAND sh -c "first=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); second=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); [ -n \"$first\" ] && [ \"$first\" = \"$second\" ]")
+    # A projection, not a report: dirty.fsm makes the summary exit 1 and print UNREACHABLE, and the
+    # graph draws it and says nothing.
+    add_test(NAME inspect_graph_is_a_projection_not_a_report
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_graph_is_a_projection_not_a_report PROPERTIES FAIL_REGULAR_EXPRESSION
+        "UNREACHABLE")
+    add_test(NAME inspect_graph_is_one_mode
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --canonical --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME inspect_graph_needs_a_file
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --graph > /dev/null 2>&1; [ $? -eq 2 ]")
+
     # Every relative link in a markdown file in this tree has to point at something. The script
     # carries the reason it exists; the short version is that a false reference to a file this
     # repository does not have reached a shipped README once already.

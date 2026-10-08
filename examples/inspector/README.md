@@ -7,8 +7,8 @@ machine compiled into it.
 
 It is also the only place in the repository where the analyses of `SPEC.md` section 8
 (`unreachable`, `sink_states`) are used by something other than their own tests, which makes it the
-smallest complete answer to "what else can I build on this library?" — about five hundred lines,
-including the usage text and the trace.
+smallest complete answer to "what else can I build on this library?" — about six hundred lines,
+including the usage text, the trace and the graph.
 
 ## What it reports
 
@@ -16,6 +16,7 @@ including the usage text and the trace.
 fsmtable-inspect <file.fsm>                      summarize it, and report findings
 fsmtable-inspect --canonical <file.fsm>          write the canonical form to stdout
 fsmtable-inspect --trace <file.fsm> <event>...   walk the table over those events
+fsmtable-inspect --graph <file.fsm>              draw the machine as a Mermaid state diagram
 fsmtable-inspect --help
 ```
 
@@ -32,10 +33,17 @@ fsmtable-inspect --help
   the state the machine was in to the state the row it matched leads to, with the entry and exit
   clauses that run on the way. The walk stops at the first event the table has no row for, names it,
   and exits 1.
+- with `--graph <file.fsm>`, a Mermaid `stateDiagram-v2` instead of the summary: one node per state,
+  the entry and exit clauses in that node's own description, a `[*]` marker on the initial state,
+  one edge per row labelled with the kind and, when the row carries them, its `when` clause and its
+  action, and a class on every sink.
 
 Exit codes, the same convention as `fsmtable-gen`: **0** nothing to report, **1** the file could not
 be read, a state is unreachable, or a traced event matched no row, **2** the command line is wrong.
-That makes it usable from a script or a hook without parsing its output.
+That makes it usable from a script or a hook without parsing its output. `--canonical` and `--graph`
+are the exceptions, and for the same reason: they *project* the machine rather than report on it, so
+they exit 0 whatever the analyses find. A diagram that refused to draw an unreachable state would
+hide the state, not the mistake — the summary is where the finding belongs.
 
 ## Real output, on this repository's own machines
 
@@ -72,6 +80,31 @@ examples/inspector/dirty.fsm: Dirty — trace of 2 event(s) from Start
   Start --step--> Running
   trace stopped at event 2: Running --bump--> (value 5) matched no row
   the table's row for that pair refused it — examples/inspector/dirty.fsm:23: transition Running --bump--> Running when lt 3 action note_bump
+
+$ ./build/fsmtable-inspect --graph examples/protocol/protocol.fsm
+stateDiagram-v2
+    %% examples/protocol/protocol.fsm: Connection — 5 state(s), 12 row(s)
+    %% a projection of the table: entry and exit are state descriptions, guards and actions are edge labels
+    state "Closed" as s0
+    state "SynSent<br/>entry arm_timer<br/>exit cancel_timer" as s1
+    state "Established" as s2
+    state "Refused<br/>entry on_refused" as s3
+    state "TimeWait<br/>entry arm_time_wait" as s4
+    [*] --> s0
+    s0 --> s1 : open / on_open
+    s1 --> s2 : syn_ack / on_syn_ack
+    s1 --> s1 : tick when ge 1000 / retransmit
+    s1 --> s1 : tick
+    s1 --> s3 : expire / on_give_up
+    s1 --> s3 : reset / on_refused_while_opening
+    s2 --> s2 : data / on_data
+    s2 --> s2 : tick
+    s2 --> s4 : fin / on_peer_fin
+    s4 --> s0 : tick when ge 2000 / on_time_wait_over
+    s4 --> s4 : tick
+    s4 --> s2 : data / on_reopen
+    classDef sink fill:#3a0b0b,stroke:#f87171,color:#e2e8f0
+    class s3 sink
 ```
 
 `dirty.fsm` is in this directory precisely so that output has an example: `Orphan` is never a
@@ -125,6 +158,51 @@ it on:
 That is the partial pair this tool has always reported, with the event that hit it named. The
 initial state's own `entry` clause is never run, for the same reason the generated factory does not
 run it: the machine is being created, not entered (`ENTRY_EXIT.md`).
+
+## The graph, and what it draws
+
+`--graph` is the second projection, beside `--canonical`: it reads the table, writes a picture of it,
+and — like `--canonical` — writes nothing back. What it draws is what `parse` read: the states, the
+rows, the guards and the clauses, in the machine's own order (states as they first appear, rows as the
+file wrote them). One parse, one truth.
+
+```sh
+./build/fsmtable-inspect --graph examples/protocol/protocol.fsm
+```
+
+The output is a Mermaid `stateDiagram-v2`, the diagram text GitHub, GitLab and mermaid.live render
+without any renderer installed here. Four things are worth reading for:
+
+- **The initial state is marked with `[*]`**, the state diagram's own start marker, rather than named
+  in a comment: `[*] --> s0`.
+- **Entry and exit clauses are the state's description.** A decorated state carries them as a `<br/>`
+  second line — `state "SynSent<br/>entry arm_timer<br/>exit cancel_timer" as s1` — because
+  `ENTRY_EXIT.md`'s clauses belong to the state, not to a row.
+- **A row is an edge**, labelled with the kind (`NAMED_KINDS.md`'s name where the file declared one,
+  the number otherwise) and then, when the row carries them, its `when` clause and its `action`:
+  `s1 --> s1 : tick when ge 1000 / retransmit`. Two rows for one pair — the guarded one and its
+  fallback — are two edges, which is exactly what rule 9 says the table holds.
+- **A sink is classed.** `sink_states`, the same analysis the summary reports, names them, so the
+  states the summary warns about are the ones that stand out in the drawing. A machine with no sink
+  emits no `classDef` at all.
+
+The node ids are `s0`, `s1`, … in the machine's state order rather than the state names themselves. A
+state may legally be called `state`, `note`, `direction` or `end`, and a Mermaid state diagram reads
+those words as syntax — so the name goes in the description, where it renders as text and never as
+grammar. KitCI's `--graph` labels its nodes the same way for the same reason; here the reader still
+sees the machine's own names, and the parser sees ids it cannot mistake for its own keywords.
+
+Two limits, stated rather than discovered later:
+
+- **There is no Mermaid renderer on the machine this was written on**, and the gate does not add a
+  node one, so the drawing is checked as *bytes*: `tools/check-doc-claims.sh` re-runs the invocation
+  above and diffs the block line for line, and the ctest cases pin the initial marker, the
+  descriptions, a guarded edge and a sink's class. What that cannot see is whether a renderer likes
+  the `%%` header comment or the `<br/>` line break. KitCI v1.1 has the same gap and records it the
+  same way.
+- **The graph is drawn, not reported on.** An unreachable state is drawn like every other, and the
+  exit code is 0: `--graph` shows the machine the table describes, and the summary is where "this
+  state can never be reached" gets said.
 
 ## Why a sink is not a failure and an unreachable state is
 
