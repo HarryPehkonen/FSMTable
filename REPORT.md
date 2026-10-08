@@ -246,3 +246,119 @@ The stage report for that run, for the record: `tree` 0.0s, `format` 0.1s, `buil
 `fuzz` 62.9s, `deno` 0.1s. `pristine` is the stage that matters for this delivery: it builds the
 renamed tree from a `git archive` of the commit, so the new directory, the new test binary and the
 extended install rule are exercised from a checkout that has none of the working tree's state.
+
+## Appendix — the merge verb: two machines composed into one
+
+The second verb of `fsmtable-transform`, and the first thing here that reads TWO files and writes one
+that neither of them was. The policy is the delivery: states and kinds are composed by NAME — a name
+the two machines share is one thing — because that is what makes a merge a composition rather than a
+concatenation, and because a state name the two already agree on is the seam a composition meets on.
+
+    what                                        document
+    fsmtable-transform merge a.fsm b.fsm        TRANSFORM.md
+    the library call behind it                  src/fsmtable.hpp (the addition), src/merge.cpp
+    the tests                                   tests/merge_test.cpp — 27 cases
+    the CLI cases                               CMakeLists.txt — 14 ctest cases
+    the checker that holds the doc's output     tools/check-doc-claims.sh (item 6, second block)
+
+Identity comes from the first machine: its `machine` name and its `initial`, the second machine's
+initial becoming an ordinary state. Kinds must agree — a number two names disagree about, or one name
+standing for two numbers, is a refusal that names both declarations, and `rename` is the tool that
+gets out of the way. Rows union, and the one pair the format has no room for, two rows of the SAME
+guardedness for one `(from, kind)` (SPEC.md rule 9), is a refusal rather than a silent pick. Clauses
+fuse per state and per clause, the first machine's winning where both decorate one, with one
+exception: the second machine's FORMER initial-entry clause is dropped and the drop is reported on
+stderr, because a merged machine is created rather than entered (ENTRY_EXIT.md) and a merged machine
+cannot have been entered.
+
+The verb exists for its refusal, and the refusal is a finding rather than an error: the union is
+`dump`ed, parsed back, and required to reach every state from the merged initial. A composition that
+does not meet — two machines with no state name in common, which is the ordinary case for unrelated
+machines — is refused with the unreachable states named and NOTHING written, because a new file that
+is a machine with a state nobody can reach is a worse thing to leave on disk than no file. That is
+the property a concatenation cannot have, and it is why this verb's exit code is part of its contract.
+
+Four readings the card did not settle are written up in QUESTIONS.md rather than guessed at: Q17 (a
+merge refusal carries no line number — the parse tree resolves names and keeps no positions, so the
+message names the two DECLARATIONS, which is what "naming both lines" was for), Q18 (an unreachable
+union is a refusal and not a report, with the consequence — unrelated machines never merge — recorded
+rather than discovered later), Q19 (the merged machine takes the first machine's name as well as its
+initial, because a composed name would not be writable in the format's own rule 7), and Q20 (which
+clause wins when both machines decorate one state, with the honesty of what the drop costs a row that
+led back into the second machine's initial state).
+
+Which tests do the work was measured rather than assumed, three times.
+
+Sabotage 1 — the reachability refusal replaced by a warning that prints the same finding. Two of the
+27 library cases fail (`RefusesAResultThatLeavesTheSecondMachinesStatesUnreachable` and
+`RefusesAResultWhereTheFirstMachinesOwnOrphanIsStillUnreachable`) and the other 25 pass, so that
+property is held up by exactly the two cases that claim it.
+
+Sabotage 2 — the tool made to exit 1 where the merge succeeded. The four ctest cases that assert
+`[ $code -eq 0 ]` fail, so the exit codes are enforced in both directions.
+
+Sabotage 3 — one hex digit in TRANSFORM.md's merge block flipped. `tools/check-doc-claims.sh` fails
+with the changed line in the diff, so the doc's second output block is checked and not just printed.
+
+### The exit code a ctest case thought it was pinning
+
+Sabotage 1 found something that is not about merge at all. The six `merge_*` ctest cases had been
+written in the shape the fifteen cases above them use:
+
+    add_test(NAME X COMMAND sh -c "...; printf '%s\n' \"$out\"; [ $code -eq 1 ]")
+    set_tests_properties(X PROPERTIES PASS_REGULAR_EXPRESSION "...")
+
+and ctest IGNORES a case's exit code as soon as `PASS_REGULAR_EXPRESSION` is set — "The process exit
+code is ignored" (`cmake --help-property PASS_REGULAR_EXPRESSION`, cmake 3.31.6). Measured: with the
+reachability refusal sabotaged away the run exits 0 while still printing the finding, the same command
+string run through `sh` exits 1, and `ctest -R merge_refuses_a_union_that_leaves_a_state_unreachable`
+still reported PASSED. Every case of that shape proves the message and silently stopped proving the
+code, under block comments that say "these cases pin the EXIT CODES".
+
+The six merge cases now put both halves in the shell — print the output for a reader, grep it, then
+check the code — with the reason and the measurement in the block comment above them. Re-measured
+after the change: sabotage 1 fails the reachability case, and sabotage 2 fails the four cases that
+assert 0.
+
+The fifteen pre-existing cases with the same hole are deliberately NOT rewritten here: the
+inspector's and tier 2a's tests are other cards' deliveries, and burying a harness repair inside a
+merge diff is how a gate stops being auditable. Card **t_198cb151** carries the finding, the case
+list, the exact fix per case and the measurement, and it is gated on this card so two workers are
+never in this file at once.
+
+The first `tidy` run found six real findings in the new code (three in the test, three in the tool): a
+one-character string literal passed to `find` where a character was meant, and three copies of a
+`std::vector` element where a const reference was meant — the second of which had been in the tool all
+along and only began being reported once the rename verb's body moved into a function taking a const
+reference. Both are fixed in the code, with no suppression and no baseline entry.
+
+    Gate verdict line for that commit (verbatim):
+    GATE PASSED — 12 passed, 0 failed, 0 skipped
+    That line is from the run on commit dbdb181, which carries the merge and the ctest repair; this
+    file is the only difference from that tree, and the run was repeated after it was added.
+
+The stage report for that run, for the record: `tree` 0.0s, `format` 0.1s, `build` 0.4s, `tests`
+0.2s, `release` 10.7s, `version` 0.0s, `asan` 11.8s, `tsan` 8.1s, `tidy` 70.6s, `pristine` 16.4s,
+`fuzz` 63.2s, `deno` 0.1s. `pristine` matters here as it did for the rename: it builds the merged tree
+from a `git archive` of the commit, so the new library unit, the new fixtures and the new test binary
+are exercised from a checkout that has none of the working tree's state.
+
+### What the format pushed back on (the tier 3 evidence)
+
+Tier 3 is waiting on this paragraph. The honest answer is that merge needed no new format feature —
+but there are three places where the format's silence is now a documented refusal rather than a
+decision buried in code:
+
+* **Two rows of one guardedness for a `(from, kind)` pair have no precedence.** Merging two machines
+  that grew from a common ancestor, or a machine with itself, hits this on every shared row, and the
+  format cannot say "these two rows are the same row" or "one of them wins". The refusal names the
+  pair; the fix is a `rename` plus a hand edit, or a v2 directive that says which row survives — a
+  format decision, not a tool one.
+* **A cross-machine row cannot be written.** The seam is a state NAME the two machines already share;
+  the format has no way to say "the second machine's initial is entered from the first machine's
+  `Done`" when the two names differ. Two machines that share no name therefore never merge, and the
+  only honest alternative is to rename one side until they do — which is what tier 2a is for.
+* **The initial-entry drop is lossy in one direction**, and it is recorded rather than worked around:
+  a row that led back into the second machine's initial state ran nothing before and runs nothing
+  after, because the clause is gone. Carrying the clause would run an action the second machine never
+  ran on entry, which is the hidden side effect ENTRY_EXIT.md's Q14 exists to keep out.
