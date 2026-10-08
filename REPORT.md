@@ -320,11 +320,16 @@ check the code — with the reason and the measurement in the block comment abov
 after the change: sabotage 1 fails the reachability case, and sabotage 2 fails the four cases that
 assert 0.
 
-The fifteen pre-existing cases with the same hole are deliberately NOT rewritten here: the
+The fifteen pre-existing cases with the same hole were deliberately NOT rewritten here: the
 inspector's and tier 2a's tests are other cards' deliveries, and burying a harness repair inside a
-merge diff is how a gate stops being auditable. Card **t_198cb151** carries the finding, the case
-list, the exact fix per case and the measurement, and it is gated on this card so two workers are
-never in this file at once.
+merge diff is how a gate stops being auditable. Card **t_198cb151** carried the finding, the case
+list and the exact fix per case, and it was gated on this card so two workers were never in this file
+at once. That card has since landed the repair: all fifteen cases now grep their own output and check
+their code together in the shell, and no case in `CMakeLists.txt` sets `PASS_REGULAR_EXPRESSION` any
+more. Proved on this tree by sabotage in both directions — with every tool's exit code flipped
+between 0 and nonzero all fifteen fail, and with the tools' output dropped (their exit codes left
+intact) all fifteen fail again — while each case pins the same message pattern it always did. Before
+the repair the same exit-code flip left all fifteen reporting PASSED.
 
 The first `tidy` run found six real findings in the new code (three in the test, three in the tool): a
 one-character string literal passed to `find` where a character was meant, and three copies of a

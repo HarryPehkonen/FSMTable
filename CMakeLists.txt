@@ -223,9 +223,7 @@ if(FSMTABLE_BUILD_TESTS)
         COMMAND fsmtable_gen "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/keyword_state.fsm")
     set_tests_properties(fsmtable_gen_rejects_keyword PROPERTIES WILL_FAIL TRUE)
     add_test(NAME fsmtable_gen_prints_a_header
-        COMMAND fsmtable_gen "${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm")
-    set_tests_properties(fsmtable_gen_prints_a_header PROPERTIES PASS_REGULAR_EXPRESSION
-        "inline constexpr std::array<fsmgine::compiled::Transition<TrafficLightState, TrafficLightEvent>, 3> TrafficLightRows")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable_gen>\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"inline constexpr std::array<fsmgine::compiled::Transition<TrafficLightState, TrafficLightEvent>, 3> TrafficLightRows\" && [ $code -eq 0 ]")
 
     add_executable(fsmTable_calculator_tests examples/calculator/calculator_test.cpp)
     target_link_libraries(fsmTable_calculator_tests PRIVATE calculator_core GTest::gtest_main)
@@ -285,9 +283,7 @@ if(FSMTABLE_BUILD_TESTS)
     add_test(NAME inspect_reports_a_clean_machine
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" > /dev/null")
     add_test(NAME inspect_finds_an_unreachable_state
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
-    set_tests_properties(inspect_finds_an_unreachable_state PROPERTIES
-        PASS_REGULAR_EXPRESSION "UNREACHABLE: Orphan")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"UNREACHABLE: Orphan\" && [ $code -eq 1 ]")
     add_test(NAME inspect_canonical_is_stable
         COMMAND sh -c "first=$(\"$<TARGET_FILE:fsmtable-inspect>\" --canonical \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); second=$(printf '%s\\n' \"$first\" | \"$<TARGET_FILE:fsmtable-inspect>\" --canonical /dev/stdin); [ \"$first\" = \"$second\" ]")
     add_test(NAME inspect_refuses_no_arguments
@@ -295,21 +291,17 @@ if(FSMTABLE_BUILD_TESTS)
 
     # --trace: the table walked over a flat event list. What each invocation PRINTS is pinned
     # exactly by tools/check-doc-claims.sh (the inspector README's output block re-runs the
-    # documented commands and diffs them line for line); these cases pin the EXIT CODES, which is
-    # the part a script or a hook would use — 0 for a walk that finished, 1 for the first event the
-    # table has no row for, 2 for a command line it cannot read.
+    # documented commands and diffs them line for line). These cases pin a line of the output AND
+    # the exit code a script or a hook uses — 0 for a walk that finished, 1 for the first event the
+    # table has no row for, 2 for a command line it cannot read. Both halves sit in the shell rather
+    # than in PASS_REGULAR_EXPRESSION, which would void the code half; why is at the merge cases
+    # below.
     add_test(NAME inspect_trace_walks_the_machine
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" number add number equals); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_trace_walks_the_machine PROPERTIES PASS_REGULAR_EXPRESSION
-        "Accum --equals--> Accum")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" number add number equals); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"Accum --equals--> Accum\" && [ $code -eq 0 ]")
     add_test(NAME inspect_trace_takes_a_value_and_a_guard
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" open syn_ack fin tick=2500); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_trace_takes_a_value_and_a_guard PROPERTIES PASS_REGULAR_EXPRESSION
-        "TimeWait --tick--> Closed")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" open syn_ack fin tick=2500); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"TimeWait --tick--> Closed\" && [ $code -eq 0 ]")
     add_test(NAME inspect_trace_stops_at_an_unmatched_event
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\" step bump=5); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
-    set_tests_properties(inspect_trace_stops_at_an_unmatched_event PROPERTIES PASS_REGULAR_EXPRESSION
-        "trace stopped at event 2: Running --bump--> .value 5. matched no row")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\" step bump=5); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qE -e \"trace stopped at event 2: Running --bump--> .value 5. matched no row\" && [ $code -eq 1 ]")
     add_test(NAME inspect_trace_refuses_an_unknown_kind
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" nosuchkind > /dev/null 2>&1; [ $? -eq 2 ]")
     add_test(NAME inspect_trace_needs_an_event
@@ -324,25 +316,15 @@ if(FSMTABLE_BUILD_TESTS)
     # tools/check-doc-claims.sh, which re-runs the invocation the inspector README documents and
     # diffs the output line for line — the same check KitCI v1.1 gives its own --graph.
     add_test(NAME inspect_graph_draws_the_machine
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_graph_draws_the_machine PROPERTIES PASS_REGULAR_EXPRESSION
-        "stateDiagram-v2")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"stateDiagram-v2\" && [ $code -eq 0 ]")
     add_test(NAME inspect_graph_marks_the_initial_state
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_graph_marks_the_initial_state PROPERTIES PASS_REGULAR_EXPRESSION
-        "\\[\\*\\] --> s0")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"[*] --> s0\" && [ $code -eq 0 ]")
     add_test(NAME inspect_graph_annotates_entry_and_exit
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_graph_annotates_entry_and_exit PROPERTIES PASS_REGULAR_EXPRESSION
-        "state \"SynSent<br/>entry arm_timer<br/>exit cancel_timer\" as s1")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e 'state \"SynSent<br/>entry arm_timer<br/>exit cancel_timer\" as s1' && [ $code -eq 0 ]")
     add_test(NAME inspect_graph_labels_a_guarded_edge
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_graph_labels_a_guarded_edge PROPERTIES PASS_REGULAR_EXPRESSION
-        "s1 --> s1 : tick when ge 1000 / retransmit")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"s1 --> s1 : tick when ge 1000 / retransmit\" && [ $code -eq 0 ]")
     add_test(NAME inspect_graph_marks_a_sink
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(inspect_graph_marks_a_sink PROPERTIES PASS_REGULAR_EXPRESSION
-        "class s3 sink")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --graph \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"class s3 sink\" && [ $code -eq 0 ]")
     # Byte-stable: two runs over the same file are the same bytes, the property KitCI's graph tests
     # pin with two renders of one config. The non-empty guard keeps an absent tool from passing
     # vacuously (the class of vacuity REPORT.md records for the exit-code-only cases).
@@ -361,25 +343,18 @@ if(FSMTABLE_BUILD_TESTS)
 
     # The transform (TRANSFORM.md), as ctest cases. What it PRINTS is pinned exactly by
     # tools/check-doc-claims.sh, which re-runs the invocations TRANSFORM.md documents and diffs
-    # them line for line; these cases pin the EXIT CODES — the part a script or a hook uses — and
-    # the one property a command line can show on its own: that a file's comments are still there
-    # afterwards, and that a rename and its inverse are byte-identical to doing nothing.
+    # them line for line; these cases pin the EXIT CODES — the part a script or a hook uses — beside
+    # the line each invocation shows and the one property a command line can show on its own: that a
+    # file's comments are still there afterwards, and that a rename and its inverse are byte-identical
+    # to doing nothing. Message and code are checked together in the shell (the merge note below).
     add_test(NAME transform_writes_a_renamed_machine
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Stop machine:TrafficLight=Lamp); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(transform_writes_a_renamed_machine PROPERTIES PASS_REGULAR_EXPRESSION
-        "transition Stop --1--> Green action on_red_green")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Stop machine:TrafficLight=Lamp); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"transition Stop --1--> Green action on_red_green\" && [ $code -eq 0 ]")
     add_test(NAME transform_keeps_the_comments_while_a_state_moves
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" state:SynSent=Opened); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(transform_keeps_the_comments_while_a_state_moves PROPERTIES PASS_REGULAR_EXPRESSION
-        "# A connection lifecycle, with timeouts.")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" state:SynSent=Opened); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"# A connection lifecycle, with timeouts.\" && [ $code -eq 0 ]")
     add_test(NAME transform_leaves_the_rows_the_rename_does_not_reach
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Green=Vert); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(transform_leaves_the_rows_the_rename_does_not_reach PROPERTIES PASS_REGULAR_EXPRESSION
-        "transition Yellow --3--> Red when ge 30")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Green=Vert); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"transition Yellow --3--> Red when ge 30\" && [ $code -eq 0 ]")
     add_test(NAME transform_refuses_a_collision
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Green 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
-    set_tests_properties(transform_refuses_a_collision PROPERTIES PASS_REGULAR_EXPRESSION
-        "collides with the state 'Green'")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Green 2>&1); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"collides with the state 'Green'\" && [ $code -eq 1 ]")
     add_test(NAME transform_refuses_an_unknown_name
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Nope=Amber > /dev/null 2>&1; [ $? -eq 1 ]")
     add_test(NAME transform_refuses_a_malformed_rename
@@ -389,9 +364,7 @@ if(FSMTABLE_BUILD_TESTS)
     add_test(NAME transform_refuses_the_same_name_twice
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=A state:Red=B > /dev/null 2>&1; [ $? -eq 2 ]")
     add_test(NAME transform_refuses_a_file_that_does_not_parse
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" state:A=B 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 2 ]")
-    set_tests_properties(transform_refuses_a_file_that_does_not_parse PROPERTIES PASS_REGULAR_EXPRESSION
-        "invalid_junk.fsm:4:")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" state:A=B 2>&1); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"invalid_junk.fsm:4:\" && [ $code -eq 2 ]")
     add_test(NAME transform_refuses_a_file_it_cannot_read
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/no_such_file.fsm\" state:A=B > /dev/null 2>&1; [ $? -eq 2 ]")
     add_test(NAME transform_needs_a_command
@@ -418,14 +391,15 @@ if(FSMTABLE_BUILD_TESTS)
     # a state unreachable is refused rather than written. What the whole machine PRINTS is pinned by
     # tools/check-doc-claims.sh, the division the rename cases above keep.
     #
-    # These cases do NOT set PASS_REGULAR_EXPRESSION, deliberately: ctest IGNORES a case's exit code
-    # as soon as that property is set — "The process exit code is ignored" (cmake --help-property
+    # No case in this file sets PASS_REGULAR_EXPRESSION, deliberately: ctest IGNORES a case's exit
+    # code as soon as that property is set — "The process exit code is ignored" (cmake --help-property
     # PASS_REGULAR_EXPRESSION) — so a case that set it would pin the message while its
     # `[ $code -eq 1 ]` stopped counting. Measured rather than assumed: with the reachability refusal
     # removed from src/merge.cpp the run exits 0 while still printing the finding, and a case with
-    # the property set passes anyway. Both halves therefore live in the shell — print the output for
-    # a reader, grep it, then check the code. The cases above that set the property have exactly this
-    # hole; card t_198cb151 repairs them.
+    # the property set passed anyway. Both halves therefore live in the shell — print the output for
+    # a reader, grep it, then check the code — and the cases above that used to set the property have
+    # been moved to exactly this shape (card t_198cb151: with every tool's exit code flipped 0 <->
+    # nonzero, and again with the output dropped, all fifteen of them fail).
     set(FSMTABLE_MERGE_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     add_test(NAME merge_writes_the_union
         COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_right.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"transition SignedIn --expire--> Anonymous\" && [ $code -eq 0 ]")
