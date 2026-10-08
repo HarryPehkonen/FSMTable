@@ -7,14 +7,15 @@ machine compiled into it.
 
 It is also the only place in the repository where the analyses of `SPEC.md` section 8
 (`unreachable`, `sink_states`) are used by something other than their own tests, which makes it the
-smallest complete answer to "what else can I build on this library?" — about a hundred and fifty
-lines, including the usage text.
+smallest complete answer to "what else can I build on this library?" — about five hundred lines,
+including the usage text and the trace.
 
 ## What it reports
 
 ```
-fsmtable-inspect <file.fsm>              summarize it, and report findings
-fsmtable-inspect --canonical <file.fsm>  write the canonical form to stdout
+fsmtable-inspect <file.fsm>                      summarize it, and report findings
+fsmtable-inspect --canonical <file.fsm>          write the canonical form to stdout
+fsmtable-inspect --trace <file.fsm> <event>...   walk the table over those events
 fsmtable-inspect --help
 ```
 
@@ -26,11 +27,15 @@ fsmtable-inspect --help
 - **unreachable** states — no path from the initial state. Always a failure;
 - with `--canonical`, the canonical text instead of the summary: the same machine the parser read,
   with the kinds and states declared above the frozen row block, in the canonical order the format
-  defines.
+  defines;
+- with `--trace <file.fsm> <event>...`, the path instead of the summary: one line per event, from
+  the state the machine was in to the state the row it matched leads to, with the entry and exit
+  clauses that run on the way. The walk stops at the first event the table has no row for, names it,
+  and exits 1.
 
 Exit codes, the same convention as `fsmtable-gen`: **0** nothing to report, **1** the file could not
-be read or a state is unreachable, **2** the command line is wrong. That makes it usable from a
-script or a hook without parsing its output.
+be read, a state is unreachable, or a traced event matched no row, **2** the command line is wrong.
+That makes it usable from a script or a hook without parsing its output.
 
 ## Real output, on this repository's own machines
 
@@ -47,6 +52,26 @@ examples/inspector/dirty.fsm: Dirty — 4 state(s), 4 row(s), 3 named kind(s)
   sinks:    Done  (nothing leaves them; often deliberate)
   partial:  Running --bump-->  (a guarded row with no unguarded row: a false guard leaves the event)
   UNREACHABLE: Orphan  (no path from Start)
+
+$ ./build/fsmtable-inspect --trace examples/calculator/calculator.fsm number add number equals
+examples/calculator/calculator.fsm: Calculator — trace of 4 event(s) from Entry
+  Entry --number--> Accum  (action take_operand)
+  Accum --add--> PendingAdd
+  PendingAdd --number--> Accum  (action add_operand)
+  Accum --equals--> Accum
+
+$ ./build/fsmtable-inspect --trace examples/protocol/protocol.fsm open syn_ack fin tick=2500
+examples/protocol/protocol.fsm: Connection — trace of 4 event(s) from Closed
+  Closed --open--> SynSent  (action on_open, entry arm_timer)
+  SynSent --syn_ack--> Established  (exit cancel_timer, action on_syn_ack)
+  Established --fin--> TimeWait  (action on_peer_fin, entry arm_time_wait)
+  TimeWait --tick--> Closed  (action on_time_wait_over)
+
+$ ./build/fsmtable-inspect --trace examples/inspector/dirty.fsm step bump=5
+examples/inspector/dirty.fsm: Dirty — trace of 2 event(s) from Start
+  Start --step--> Running
+  trace stopped at event 2: Running --bump--> (value 5) matched no row
+  the table's row for that pair refused it — examples/inspector/dirty.fsm:23: transition Running --bump--> Running when lt 3 action note_bump
 ```
 
 `dirty.fsm` is in this directory precisely so that output has an example: `Orphan` is never a
@@ -56,6 +81,50 @@ row — which is the point.
 
 The block above is compared line for line by `tools/check-doc-claims.sh` on every gate run: lines
 beginning `$ ` are the commands it runs, and every other line is what those commands must print.
+
+## The trace, and what it does not simulate
+
+`--trace` is the one thing this tool does that *runs* the table, so the boundary is worth being
+precise about — it is the format's own boundary (`examples/protocol/README.md`). An event is a kind,
+optionally with the value that rides on it:
+
+```sh
+./build/fsmtable-inspect --trace examples/protocol/protocol.fsm open syn_ack fin tick=2500
+```
+
+The list is **flat**: whitespace separates the events, `=` is the only punctuation, and each kind is
+read the way a row spells it — a declared kind name, or a number `0`..`255` (`NAMED_KINDS.md`). The
+value after `=` is the number a `when` clause is compared against, and an event with no `=` carries
+`0`: the tool never invents a value, the caller hands over the one the guard should be tested
+against. That is the whole event language. It is not a driver — no clock, no state beyond the
+machine's current state, no action, no way to say "the action did X". A machine whose behaviour
+depends on what the driver remembers (a retry count, a socket, the number a calculator is holding)
+traces here as the sequence of states the *table* allows, which is all a `.fsm` file can say.
+
+Each line names the state the machine was in, the kind that arrived, and the state the matched row
+leads to, with the clauses `ENTRY_EXIT.md` composes on the way — the source state's `exit`, then the
+row's own `action`, then the target state's `entry`:
+
+```
+  Closed --open--> SynSent  (action on_open, entry arm_timer)
+  SynSent --syn_ack--> Established  (exit cancel_timer, action on_syn_ack)
+```
+
+Two rows can answer one (state, kind): the guarded one first, the unguarded one behind it as the
+fallback (rule 9 — and the canonical order is the precedence rule, so a file written the other way
+round still behaves as the format says). The guard is tested against the event's own value; when it
+is false the fallback fires, and when there is no fallback the event matches no row at all. The walk
+then stops at that event and the report names the row that refused it, with the line the file wrote
+it on:
+
+```
+  trace stopped at event 2: Running --bump--> (value 5) matched no row
+  the table's row for that pair refused it — examples/inspector/dirty.fsm:23: transition Running --bump--> Running when lt 3 action note_bump
+```
+
+That is the partial pair this tool has always reported, with the event that hit it named. The
+initial state's own `entry` clause is never run, for the same reason the generated factory does not
+run it: the machine is being created, not entered (`ENTRY_EXIT.md`).
 
 ## Why a sink is not a failure and an unreachable state is
 

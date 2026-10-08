@@ -249,6 +249,30 @@ if(FSMTABLE_BUILD_TESTS)
     add_test(NAME inspect_refuses_no_arguments
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" > /dev/null 2>&1; [ $? -eq 2 ]")
 
+    # --trace: the table walked over a flat event list. What each invocation PRINTS is pinned
+    # exactly by tools/check-doc-claims.sh (the inspector README's output block re-runs the
+    # documented commands and diffs them line for line); these cases pin the EXIT CODES, which is
+    # the part a script or a hook would use — 0 for a walk that finished, 1 for the first event the
+    # table has no row for, 2 for a command line it cannot read.
+    add_test(NAME inspect_trace_walks_the_machine
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" number add number equals); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_trace_walks_the_machine PROPERTIES PASS_REGULAR_EXPRESSION
+        "Accum --equals--> Accum")
+    add_test(NAME inspect_trace_takes_a_value_and_a_guard
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" open syn_ack fin tick=2500); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(inspect_trace_takes_a_value_and_a_guard PROPERTIES PASS_REGULAR_EXPRESSION
+        "TimeWait --tick--> Closed")
+    add_test(NAME inspect_trace_stops_at_an_unmatched_event
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\" step bump=5); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
+    set_tests_properties(inspect_trace_stops_at_an_unmatched_event PROPERTIES PASS_REGULAR_EXPRESSION
+        "trace stopped at event 2: Running --bump--> .value 5. matched no row")
+    add_test(NAME inspect_trace_refuses_an_unknown_kind
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" nosuchkind > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME inspect_trace_needs_an_event
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME inspect_trace_is_one_mode
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --canonical --trace \"${FSMTABLE_CALCULATOR_DIR}/calculator.fsm\" number > /dev/null 2>&1; [ $? -eq 2 ]")
+
     # Every relative link in a markdown file in this tree has to point at something. The script
     # carries the reason it exists; the short version is that a false reference to a file this
     # repository does not have reached a shipped README once already.
