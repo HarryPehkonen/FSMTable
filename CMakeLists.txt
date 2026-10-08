@@ -417,11 +417,18 @@ if(FSMTABLE_BUILD_TESTS)
     # parents, `-o` writes exactly the bytes stdout would have carried, and a union that would leave
     # a state unreachable is refused rather than written. What the whole machine PRINTS is pinned by
     # tools/check-doc-claims.sh, the division the rename cases above keep.
+    #
+    # These cases do NOT set PASS_REGULAR_EXPRESSION, deliberately: ctest IGNORES a case's exit code
+    # as soon as that property is set — "The process exit code is ignored" (cmake --help-property
+    # PASS_REGULAR_EXPRESSION) — so a case that set it would pin the message while its
+    # `[ $code -eq 1 ]` stopped counting. Measured rather than assumed: with the reachability refusal
+    # removed from src/merge.cpp the run exits 0 while still printing the finding, and a case with
+    # the property set passes anyway. Both halves therefore live in the shell — print the output for
+    # a reader, grep it, then check the code. The cases above that set the property have exactly this
+    # hole; card t_198cb151 repairs them.
     set(FSMTABLE_MERGE_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     add_test(NAME merge_writes_the_union
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_right.fsm\"); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
-    set_tests_properties(merge_writes_the_union PROPERTIES PASS_REGULAR_EXPRESSION
-        "transition SignedIn --expire--> Anonymous")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_right.fsm\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"transition SignedIn --expire--> Anonymous\" && [ $code -eq 0 ]")
     # Both parents are named, and each on the line that belongs to it: the grep runs, so a header
     # that stopped naming one of them fails here rather than in a reader's eyes.
     add_test(NAME merge_header_names_both_parents
@@ -431,29 +438,19 @@ if(FSMTABLE_BUILD_TESTS)
     # The second machine's initial-entry clause is dropped AND said so: the clause is reported, and
     # the run still exits 0 because the union is well defined without it.
     add_test(NAME merge_drops_the_second_initial_entry_clause_with_a_warning
-        COMMAND sh -c "err=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_entry_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_entry_right.fsm\" 2>&1 >/dev/null); code=$?; printf '%s\\n' \"$err\"; [ $code -eq 0 ]")
-    set_tests_properties(merge_drops_the_second_initial_entry_clause_with_a_warning PROPERTIES PASS_REGULAR_EXPRESSION
-        "entry action 'on_entry_watch'.*is dropped")
+        COMMAND sh -c "err=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_entry_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_entry_right.fsm\" 2>&1 >/dev/null); code=$?; printf '%s\\n' \"$err\"; printf '%s\\n' \"$err\" | grep -qE -e \"entry action 'on_entry_watch'.*is dropped\" && [ $code -eq 0 ]")
     add_test(NAME merge_refuses_a_kind_two_names_disagree_about
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_clash_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_clash_right.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
-    set_tests_properties(merge_refuses_a_kind_two_names_disagree_about PROPERTIES PASS_REGULAR_EXPRESSION
-        "kind 1 is named 'step' by one machine and 'tick' by the other")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${FSMTABLE_MERGE_FIXTURES}/merge_clash_left.fsm\" \"${FSMTABLE_MERGE_FIXTURES}/merge_clash_right.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"kind 1 is named 'step' by one machine and 'tick' by the other\" && [ $code -eq 1 ]")
     # The composition failing to meet: nothing leads from the merged initial into the traffic light,
     # so the finding is printed, the states are named, and no machine is written.
     add_test(NAME merge_refuses_a_union_that_leaves_a_state_unreachable
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
-    set_tests_properties(merge_refuses_a_union_that_leaves_a_state_unreachable PROPERTIES PASS_REGULAR_EXPRESSION
-        "3 unreachable state\\(s\\)")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"3 unreachable state(s)\" && [ $code -eq 1 ]")
     add_test(NAME merge_refuses_a_file_that_does_not_parse
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 2 ]")
-    set_tests_properties(merge_refuses_a_file_that_does_not_parse PROPERTIES PASS_REGULAR_EXPRESSION
-        "invalid_junk.fsm:4:")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"invalid_junk.fsm:4:\" && [ $code -eq 2 ]")
     # The SECOND file's line number is reported against the second path, which is the reason the tool
     # parses both files itself before it calls the library.
     add_test(NAME merge_reports_the_second_files_own_line
-        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 2 ]")
-    set_tests_properties(merge_reports_the_second_files_own_line PROPERTIES PASS_REGULAR_EXPRESSION
-        "invalid_junk.fsm:4:")
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" 2>&1); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"invalid_junk.fsm:4:\" && [ $code -eq 2 ]")
     add_test(NAME merge_refuses_a_file_it_cannot_read
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" merge \"${CMAKE_CURRENT_SOURCE_DIR}/no_such_file.fsm\" \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/minimal.fsm\" > /dev/null 2>&1; [ $? -eq 2 ]")
     add_test(NAME merge_needs_two_files
