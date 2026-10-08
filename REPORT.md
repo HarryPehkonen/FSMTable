@@ -230,3 +230,19 @@ Two readings the card did not settle are written up rather than guessed at: Q15 
 tested over the names the whole list produces, which is what makes `state:A=B state:B=A` a swap
 rather than a refusal) and Q16 (a `state <name> entry …` line IS a rename site — the card's own list
 of sites omitted it, and leaving it out would write a file that does not parse).
+
+The first full run failed, and it is worth writing down why: the `tidy` stage found two real
+findings in the new file (`performance-inefficient-string-concatenation`, the messages a collision
+builds). The fix is in the code — an `append`-based helper, no suppression and no baseline entry —
+and the stage was re-run on its own before the verdict below.
+
+    Gate verdict line for that commit (verbatim):
+    GATE PASSED — 12 passed, 0 failed, 0 skipped
+    That line is from the run on commit f767e98; this file is the only difference from that tree, and
+    the run was repeated after it was added.
+
+The stage report for that run, for the record: `tree` 0.0s, `format` 0.1s, `build` 0.4s, `tests`
+0.2s, `release` 9.7s, `version` 0.0s, `asan` 10.5s, `tsan` 7.2s, `tidy` 67.9s, `pristine` 14.8s,
+`fuzz` 62.9s, `deno` 0.1s. `pristine` is the stage that matters for this delivery: it builds the
+renamed tree from a `git archive` of the commit, so the new directory, the new test binary and the
+extended install rule are exercised from a checkout that has none of the working tree's state.
