@@ -16,9 +16,12 @@ a `constexpr` table that runs.
   declaration per action, and a factory. Rows are typed `fsmgine::compiled::Transition`, so the
   generated table drives [FSMgine](https://github.com/HarryPehkonen/FSMgine)'s compiled back end —
   and a misspelt action name is a compile error rather than a row that silently never fires.
+  `--target deno` writes the same machine as one TypeScript module instead — a state union, a kind
+  enum, a pure `step(state, event)` table — and the gate type-checks and tests what it emitted;
+  `GENERATOR.md` has the shape.
 * **It is verified, not merely written.** The gate is 12 stages: frozen parser tests, a
   differential oracle against FSMgine, a fuzzer over the corpus, ASan/UBSan and ThreadSanitizer
-  runs, and a pristine build of `HEAD`.
+  runs, a pristine build of `HEAD`, and `deno check` + `deno test` over the generated TypeScript.
 
 ## Status
 
@@ -39,6 +42,7 @@ and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not
     ./scripts/gate.sh --tier fast         # the fast loop while working
 
     ./build/fsmtable-gen my.fsm -o my.hpp      # or write the header to stdout
+    ./build/fsmtable-gen my.fsm --target deno -o my.ts   # the same machine, as TypeScript
     ./build/calculator                         # the first worked example: a line in, an answer out
     ./build/protocol                           # the second: a connection lifecycle, script-driven
     ./build/fsmtable-inspect my.fsm            # the library without the generator
@@ -46,7 +50,9 @@ and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not
 `fsmtable-gen` exit codes: `0` written, `1` the input is unusable, `2` the command line is.
 Needs C++17, CMake, GTest, clang-format and clang-tidy for the gate, and FSMgine 2.1.0's headers
 at `~/hermes-workspace/FSMgine` (point `-DFSMTABLE_FSMGINE_DIR=<path>` elsewhere; configuration
-fails loudly without them, because the differential oracle needs them).
+fails loudly without them, because the differential oracle needs them). The `deno` stage needs
+`deno` — 2.9.6 is what it is gated with here — and skips itself rather than failing when `deno` is
+not on the PATH.
 
 ## The format, in one screen
 

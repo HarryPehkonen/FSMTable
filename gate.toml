@@ -28,6 +28,10 @@ stages = ["*"]
 # Declaration order IS the run order for tier.full, and it is the order the old
 # CI_FULL_STAGES used:
 #   tree format build tests release version asan tsan tidy pristine fuzz
+# `deno` is appended after `fuzz`, and it is the one stage here the old script did not have
+# (2026-10-08, card t_2f0d4d71: the generator's second back end). It needs `build` because it
+# runs the built generator, and nothing depends on it, so the end of the list is where it
+# belongs.
 # (`kitprobes` sat in that list too; it did NOT survive the conversion - a probe checks
 # a FILE, and the file it checked (tools/ci.sh) is gone. The closing note in this file
 # says how each guarantee it stood for got its new home.)
@@ -74,6 +78,15 @@ timeout = 0     # a cold compile on a slow machine is not a failure
 cmd = "scripts/fuzz.sh"
 when = "tool:clang++"
 timeout = 0     # a cold compile on a slow machine is not a failure
+
+# The generator's second back end: the same machines emitted as TypeScript, type-checked by
+# `deno check` and driven by the tests under tests/deno/. One stage, because the artifact it
+# judges IS the generator's output - a module that does not compile has to fail a stage, not a
+# review (scripts/deno.sh carries the detail). `when` is the rule the clang stages already
+# use: a machine without deno skips this stage rather than failing it.
+[stage.deno]
+cmd = "scripts/deno.sh"
+when = "tool:deno"
 
 # ---------------------------------------------------------------- what did not survive
 # `kitprobes` - the stage that ran tools/kit-probes/*.sh, holding this copy to the

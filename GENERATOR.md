@@ -1,12 +1,14 @@
 # fsmtable-gen — the text → code direction
 
-`fsmtable-gen` reads one `.fsm` file and writes one self-contained C++ header. The text is the
-source; the header is a build product.
+`fsmtable-gen` reads one `.fsm` file and writes one self-contained artifact: a C++ header by
+default, or a TypeScript module with `--target deno` (the second back end, below). The text is the
+source; the generated file is a build product.
 
 ```
-./tools/ci.sh build                                        # builds build/fsmtable-gen
+./scripts/gate.sh --tier fast                              # the fast loop; builds build/fsmtable-gen
 ./build/fsmtable-gen corpus/traffic_light.fsm -o traffic_light.hpp
 ./build/fsmtable-gen corpus/traffic_light.fsm              # or straight to stdout
+./build/fsmtable-gen --target deno corpus/traffic_light.fsm -o traffic_light.ts
 ./build/fsmtable-gen --help
 ```
 
@@ -94,6 +96,104 @@ whose state name is a keyword, and one shape check on the emitted table of the s
 
 Entry and exit actions are no longer on the list above: a state may carry them, and a composed
 function is what the table points at (ENTRY_EXIT.md).
+
+## The second back end: `--target deno`
+
+The same file, one self-contained TypeScript module:
+
+```
+./build/fsmtable-gen --target deno corpus/traffic_light.fsm -o traffic_light.ts
+```
+
+The flag is the only difference in the command line. `--target cpp` is the default and is the
+unchanged direction above, byte for byte; the exit codes are the same three; `-o` writes the module
+and without it the module goes to stdout. `--namespace` has no meaning here — there is one module
+per file and the caller imports it under whatever name it likes — so the combination is refused
+rather than silently ignored.
+
+### What the module holds
+
+| export | what it is |
+| --- | --- |
+| `State` | the states as a union of string literals, in first-appearance order |
+| `states` | the same names as a `readonly` array, for logs and code → text |
+| `Kind` | a numeric `enum`: a name the `.fsm` declared, or `k<number>` when it declared none |
+| `Event` | `{ kind; value }` — `kind` is what `step` reads, `value` is the format's one refinement slot |
+| `actionNames`, `Action` | every action the file names, as a `const` array and the union of its element type |
+| `initial` | the initial state |
+| `initialEntry` | the initial state's entry clause as action names, `[]` when it has none (Q14: nothing runs it) |
+| `Step` | `{ state; fired; actions }` — what `step` returns |
+| `step(state, event)` | the transition table, as a pure function |
+
+`step` is the whole of the machine's behaviour: a 2D lookup on `from` + `kind`, then
+first-match-wins over the rows for that pair, in the canonical order the header also uses — which is
+what makes the guard precedence rule (SPEC.md rule 9) come out the same in both back ends. It reads
+the table and the event and returns the state to move to, whether a row answered, and the action
+names to run. It touches nothing else: there is no factory and no machine object, the caller holds
+the state.
+
+### Entry and exit, and why the shape differs from the header
+
+The C++ header points each row at ONE generated function, because `fsmgine::compiled::Machine`
+takes one function pointer per row. TypeScript has no such constraint, so there is no wrapper
+function to invent: the same composition — the source state's `exit`, then the row's own `action`,
+then the target state's `entry` (ENTRY_EXIT.md) — is carried as the ordered list of names on the
+row, and `step` hands it back. Same three calls, same order, one name per call.
+
+### The caller's half: a registry the checker holds to the file
+
+`actionNames` is the union of every name the `.fsm` wrote, and the point of exporting it — besides
+typing `Step.actions` — is that a registry keyed by it cannot be incomplete. That is the TypeScript
+form of the header's "a misspelt action is a link error, never a row that quietly never fires":
+
+```ts
+import * as light from "./traffic_light.ts";
+
+const log: string[] = [];
+const actions: Record<light.Action, () => void> = {
+  on_red_green: () => log.push("on_red_green"),
+};
+
+let state: light.State = light.initial;
+for (const event of [{ kind: light.Kind.k1, value: 0 }]) {
+  const result = light.step(state, event);
+  state = result.state;
+  for (const name of result.actions) actions[name]();
+}
+// state === "Green", log === ["on_red_green"]
+```
+
+Delete `on_red_green` from `actions` and `deno check` refuses the file; add a name the `.fsm` does
+not have and it refuses that too. The generated module is a build product like the header: never
+edit it, regenerate it.
+
+### What is different about this target
+
+* **The C++ keyword rule and the 65535-state limit do not apply.** Every state, action and kind
+  becomes a string literal or an enum member here, and a reserved word is a legal enum member
+  (measured: `enum Kind { class = 1 }` type-checks), so a machine the header refuses — the
+  `tests/fixtures/keyword_state.fsm` case — generates correctly for this target. The rule stays on
+  the target that has the problem.
+* **Code → text for a kind comes with the language.** A numeric TypeScript enum carries its own
+  reverse map, so `Kind[1]` is `"tick"` for a kind the file named `tick`, and `"k3"` for one nobody
+  named — the round trip `NAMED_KINDS.md` gives the header's `KindNameOf`, with no emitted code.
+* **The table is a `Map` of `Map`s, not an object literal.** A state named `__proto__` is a
+  prototype key in an object literal and its rows would vanish; a `Map` keys by the value, whatever
+  the value is.
+
+### The gate stage
+
+`scripts/deno.sh` is the stage (`gate.toml`'s `[stage.deno]`, skipped when `deno` is not on PATH).
+It generates the module for every input `CMakeLists.txt` generates a header from, copies the
+committed tests under `tests/deno/` beside the freshly generated modules, then runs `deno check`
+over both and `deno test`. That is the whole bargain, and it is the same one the C++ direction
+strikes by compiling its headers in `tests/generator_test.cpp`: a generator that emits something
+that does not compile — or a table a test disagrees with — fails a stage, not a review. Nothing is
+written into the source tree: the generated modules live in the gate's own `.ci-logs/deno/`, which
+`.gitignore` already covers, and the tests import their modules as siblings there.
+
+Python and plain-JS targets are not here. A new target is a new back end with its own card; the
+`--target` enum grows one value at a time, so the two that exist stay the two that are tested.
 
 ## Not here yet
 

@@ -33,9 +33,15 @@ namespace {
 constexpr std::string_view kDefaultNamespace = "fsmtable_generated";
 
 std::string usage() {
-    return "usage: fsmtable-gen <input.fsm> [-o <output.hpp>] [--namespace <name>]\n"
+    return "usage: fsmtable-gen <input.fsm> [-o <output>] [--target cpp|deno] "
+           "[--namespace <name>]\n"
            "\n"
-           "Writes a self-contained C++ header for the machine in <input.fsm>:\n"
+           "Writes code for the machine in <input.fsm>. --target picks the back end: cpp (the\n"
+           "default) writes the C++ header described below; deno writes one self-contained\n"
+           "TypeScript module (the last section of this text). Without -o the output goes to\n"
+           "stdout. Exit: 0 written, 1 the input is unusable, 2 the command line is.\n"
+           "\n"
+           "C++ (--target cpp):\n"
            "  <Machine>State      enum class, in first-appearance order\n"
            "  <Machine>Kind       enum class of the event kinds: a name the file declared, or\n"
            "                      k<number> when it declared none\n"
@@ -53,7 +59,23 @@ std::string usage() {
            "define is a link error, never a row that quietly never fires.\n"
            "\n"
            "Names that are C++ keywords (or a machine with more than 65535 states) are refused.\n"
-           "Without -o the header goes to stdout. Exit: 0 written, 1 bad input, 2 bad usage.\n";
+           "\n"
+           "TypeScript (--target deno):\n"
+           "  State               the states as a union of string literals\n"
+           "  states              the same names as an array, in first-appearance order\n"
+           "  Kind                enum of the event kinds: a declared name, or k<number>\n"
+           "  Event               { kind, value }\n"
+           "  actionNames, Action every action the file names: a const array, and the union of\n"
+           "                      its element type, so a registry typed by it is checked by\n"
+           "                      `deno check`\n"
+           "  initial             the initial state\n"
+           "  initialEntry        the initial state's entry clause as action names (Q14)\n"
+           "  step(state, event)  the pure table: the 2D lookup, first-match-wins over the rows\n"
+           "                      for that pair, and the composed action names to run (exit, the\n"
+           "                      row's action, entry)\n"
+           "Every name becomes a string literal or an enum member, so the C++ keyword rule and\n"
+           "the 65535-state limit do not apply to this target. --namespace has no meaning for it\n"
+           "(one module per file) and is refused.\n";
 }
 
 // FNV-1a 64 over the canonical form: the generated header says which machine it came from, so
@@ -201,6 +223,24 @@ std::string op_name(fsmtable::Op op) {
         return "Ge";
     }
     return "Eq";
+}
+
+// The same op as the generated TypeScript spells it: the format's own word, lower case, so the
+// emitted table reads like the `.fsm` line it came from (`when ge 30` -> op: "ge").
+std::string op_code(fsmtable::Op op) {
+    switch (op) {
+    case fsmtable::Op::Eq:
+        return "eq";
+    case fsmtable::Op::Lt:
+        return "lt";
+    case fsmtable::Op::Le:
+        return "le";
+    case fsmtable::Op::Gt:
+        return "gt";
+    case fsmtable::Op::Ge:
+        return "ge";
+    }
+    return "eq";
 }
 
 // Every kind the header needs an enumerator for: the ones the rows use, and the ones the file
@@ -500,6 +540,193 @@ void emit_header(std::ostringstream& out, const Names& names, const fsmtable::Ma
         << "// clang-format on\n";
 }
 
+// ------------------------------------------------------------------- the deno back end
+
+// The text -> TypeScript direction: one self-contained module per machine. The shape is a union
+// of string literals for the states, a Kind enum, Event { kind, value }, and a pure
+// step(state, event) driven by a 2D lookup of from+kind -> the rows for that pair.
+//
+// The one place the two back ends part company is entry and exit composition. The C++ header
+// points each row at ONE generated function, because fsmgine::compiled::Machine takes one
+// function pointer per row. TypeScript has no such constraint, so there is no wrapper function to
+// invent: the same composition (ENTRY_EXIT.md's exit, then the row's action, then the entry) is
+// carried as the ordered list of action NAMES on the row, and step() hands that list back. It
+// keeps step() pure and keeps the actions in the caller's own registry — and it is the same three
+// calls the C++ header folds into a function, because the same helpers build both.
+void emit_deno(std::ostringstream& out, const fsmtable::Machine& machine,
+               const std::vector<fsmtable::KindName>& kind_names,
+               const std::vector<fsmtable::StateAction>& state_actions, std::string_view source,
+               std::uint64_t canonical_fingerprint) {
+    const std::vector<const fsmtable::Transition*> rows = canonical_order(machine);
+    const std::vector<int> kinds = kinds_of(rows, kind_names);
+    const std::vector<std::string> actions = actions_of(rows, state_actions);
+
+    // The calls one row runs, in ENTRY_EXIT.md's order: the source state's exit, then the row's
+    // own action, then the target state's entry. Empty when a row's ends carry no clause and it
+    // names no action.
+    const auto composed = [&state_actions](const fsmtable::Transition& row) {
+        std::vector<std::string> calls;
+        const std::string exit = exit_of(state_actions, row.from);
+        if (!exit.empty())
+            calls.push_back(exit);
+        if (!row.action.empty())
+            calls.push_back(row.action);
+        const std::string enter = enter_of(state_actions, row.to);
+        if (!enter.empty())
+            calls.push_back(enter);
+        return calls;
+    };
+    // A TypeScript array of string literals: ["a", "b"], or [] when there is nothing to run.
+    const auto literal_list = [](const std::vector<std::string>& items) {
+        std::string text = "[";
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            if (i > 0)
+                text += ", ";
+            text += '"' + items[i] + '"';
+        }
+        text += ']';
+        return text;
+    };
+
+    out << "// Generated by fsmtable-gen --target deno from " << source << " — DO NOT EDIT.\n"
+        << "// Regenerate with: fsmtable-gen --target deno " << source << " -o <this file>\n"
+        << "// Fingerprint of the canonical form (FNV-1a 64): 0x" << std::hex << std::uppercase
+        << canonical_fingerprint << std::dec << std::nouppercase << "\n"
+        << "//\n"
+        << "// The rows are in the format's canonical order (guarded before unguarded within one\n"
+        << "// from+kind): step() takes the first row that answers, so that order IS the guard\n"
+        << "// precedence rule (SPEC.md rule 9). Entry and exit clauses are composed here, at\n"
+        << "// generation time, into each row's action list: the source state's exit, then the\n"
+        << "// row's own action, then the target state's entry (ENTRY_EXIT.md).\n"
+        << "\n"
+        << "export type State = ";
+    for (std::size_t i = 0; i < machine.states.size(); ++i)
+        out << (i == 0 ? "" : " | ") << '"' << machine.states[i] << '"';
+    out << ";\n"
+        << "\n"
+        << "// The states in first-appearance order, for logs and for the round trip back to "
+           "text.\n"
+        << "export const states: readonly State[] = " << literal_list(machine.states) << ";\n"
+        << "\n"
+        << "// The event kinds this machine uses: one the file declared is emitted under its own\n"
+        << "// name, one it did not is k<number>.\n"
+        << "export enum Kind {\n";
+    for (const int kind : kinds)
+        out << "  " << kind_member(kind, kind_names) << " = " << kind << ",\n";
+    out << "}\n"
+        << "\n"
+        << "export interface Event {\n"
+        << "  kind: Kind; // what step() reads\n"
+        << "  value: number; // the single refinement slot; read only when a row is refined\n"
+        << "}\n"
+        << "\n"
+        << "// Every action the file names, as a union type. The caller keys its own registry by "
+           "it,\n"
+        << "// and `deno check` refuses a registry that is missing one of these names — the "
+           "guarantee\n"
+        << "// the C++ header gets from declaring each action as a function.\n"
+        << "export const actionNames = " << literal_list(actions) << " as const;\n"
+        << "export type Action = (typeof actionNames)[number];\n"
+        << "\n"
+        << "export interface Step {\n"
+        << "  state: State; // the state after this event (unchanged when nothing fired)\n"
+        << "  fired: boolean; // did a row answer the event\n"
+        << "  actions: readonly Action[]; // exit, the row's action, entry — in that order\n"
+        << "}\n"
+        << "\n"
+        << "// The initial state. initialEntry is the initial state's own entry clause, if it has\n"
+        << "// one: nothing runs it — the machine is being created, not entered (ENTRY_EXIT.md).\n"
+        << "export const initial: State = " << '"' << machine.initial << '"' << ";\n";
+
+    std::vector<std::string> initial_entry;
+    const std::string initial_enter = enter_of(state_actions, machine.initial);
+    if (!initial_enter.empty())
+        initial_entry.push_back(initial_enter);
+    out << "export const initialEntry: readonly Action[] = " << literal_list(initial_entry) << ";\n"
+        << "\n"
+        << R"(type Op = "eq" | "lt" | "le" | "gt" | "ge";)" << "\n"
+        << "\n"
+        << "interface Row {\n"
+        << "  from: State;\n"
+        << "  kind: Kind;\n"
+        << "  to: State;\n"
+        << "  refined: { op: Op; value: number } | null; // null = the unguarded row of the pair\n"
+        << "  actions: readonly Action[]; // the composed calls, in order\n"
+        << "}\n"
+        << "\n"
+        << "// from + kind -> the rows for that pair, in canonical order. A Map of Maps, not an\n"
+        << "// object literal: a state named __proto__ is a prototype key in an object literal "
+           "and\n"
+        << "// its rows would vanish; a Map keys by the value, whatever the value is.\n"
+        << "const table: ReadonlyMap<State, ReadonlyMap<Kind, readonly Row[]>> = new Map<\n"
+        << "  State,\n"
+        << "  ReadonlyMap<Kind, readonly Row[]>\n"
+        << ">([\n";
+    for (const std::string& state : machine.states) {
+        std::vector<const fsmtable::Transition*> from;
+        for (const fsmtable::Transition* row : rows) {
+            if (row->from == state)
+                from.push_back(row);
+        }
+        if (from.empty())
+            continue;
+        std::vector<int> from_kinds;
+        for (const fsmtable::Transition* row : from) {
+            if (std::find(from_kinds.begin(), from_kinds.end(), row->kind) == from_kinds.end())
+                from_kinds.push_back(row->kind);
+        }
+        out << "  [" << '"' << state << '"' << ", new Map<Kind, readonly Row[]>([\n";
+        for (const int kind : from_kinds) {
+            out << "    [Kind." << kind_member(kind, kind_names) << ", [\n";
+            for (const fsmtable::Transition* row : from) {
+                if (row->kind != kind)
+                    continue;
+                out << "      { from: " << '"' << row->from << '"' << ", kind: Kind."
+                    << kind_member(row->kind, kind_names) << ", to: " << '"' << row->to << '"'
+                    << ", refined: ";
+                if (row->has_when) {
+                    out << "{ op: " << '"' << op_code(row->when_op) << '"'
+                        << ", value: " << row->when_value << " }";
+                } else {
+                    out << "null";
+                }
+                out << ", actions: " << literal_list(composed(*row)) << " },\n";
+            }
+            out << "    ]],\n";
+        }
+        out << "  ])],\n";
+    }
+    out << "]);\n"
+        << "\n"
+        << "// The five comparisons a when clause can carry, in the format's own words.\n"
+        << "const comparators: Readonly<Record<Op, (value: number, actual: number) => boolean>> = "
+           "{\n"
+        << "  eq: (value, actual) => actual === value,\n"
+        << "  lt: (value, actual) => actual < value,\n"
+        << "  le: (value, actual) => actual <= value,\n"
+        << "  gt: (value, actual) => actual > value,\n"
+        << "  ge: (value, actual) => actual >= value,\n"
+        << "};\n"
+        << "\n"
+        << "// The whole of the machine's behaviour: the 2D lookup, then first-match-wins over "
+           "the\n"
+        << "// rows for that pair. Pure — it reads the table and the event and returns what to "
+           "run;\n"
+        << "// the caller holds the state and owns the actions.\n"
+        << "export function step(state: State, event: Event): Step {\n"
+        << "  const rows = table.get(state)?.get(event.kind);\n"
+        << "  if (rows) {\n"
+        << "    for (const row of rows) {\n"
+        << "      if (row.refined === null ||\n"
+        << "          comparators[row.refined.op](row.refined.value, event.value)) {\n"
+        << "        return { state: row.to, fired: true, actions: row.actions };\n"
+        << "      }\n"
+        << "    }\n"
+        << "  }\n"
+        << "  return { state, fired: false, actions: [] };\n"
+        << "}\n";
+}
+
 // ------------------------------------------------------------------------------- the checks
 
 // Every name in the file becomes a C++ identifier, so each one is checked before anything is
@@ -566,13 +793,15 @@ int main(int argc, char** argv) {
     std::string space(kDefaultNamespace);
     bool namespace_given = false;
 
+    std::string target = "cpp";
+
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg == "--help" || arg == "-h") {
             std::cout << usage();
             return 0;
         }
-        if (arg == "-o" || arg == "--namespace") {
+        if (arg == "-o" || arg == "--namespace" || arg == "--target") {
             if (i + 1 >= argc) {
                 std::cerr << "fsmtable-gen: " << arg << " needs an argument\n";
                 return 2;
@@ -580,6 +809,8 @@ int main(int argc, char** argv) {
             const std::string value = argv[++i];
             if (arg == "-o")
                 output = value;
+            else if (arg == "--target")
+                target = value;
             else {
                 space = value;
                 namespace_given = true;
@@ -597,13 +828,24 @@ int main(int argc, char** argv) {
         input = arg;
     }
 
+    if (target != "cpp" && target != "deno") {
+        std::cerr << "fsmtable-gen: unknown --target '" << target << "' (cpp or deno)\n";
+        return 2;
+    }
     if (input.empty()) {
         std::cerr << usage();
         return 2;
     }
-    if (namespace_given && (!is_identifier(space) || is_cpp_keyword(space))) {
-        std::cerr << "fsmtable-gen: --namespace '" << space << "' is not a usable identifier\n";
-        return 2;
+    if (namespace_given) {
+        if (target == "deno") {
+            std::cerr << "fsmtable-gen: --namespace does not apply to --target deno: one module "
+                         "per file, imported under whatever name the caller likes\n";
+            return 2;
+        }
+        if (!is_identifier(space) || is_cpp_keyword(space)) {
+            std::cerr << "fsmtable-gen: --namespace '" << space << "' is not a usable identifier\n";
+            return 2;
+        }
     }
 
     std::string text;
@@ -622,8 +864,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // The C++ target's names are checked here: each becomes an enumerator, a function or a type
+    // name, so a keyword (or a 65536th state, which the uint16_t enum cannot hold) is refused
+    // rather than emitted. The TypeScript target has no such names to defend — every state,
+    // action and kind becomes a string literal or an enum member, and a reserved word is a legal
+    // enum member (measured: `enum Kind { class = 1 }` compiles) — so the check stays where the
+    // rule lives rather than refusing input the deno back end handles correctly.
     std::string complaint;
-    if (!check_names(*machine, kind_names, state_actions, complaint)) {
+    if (target == "cpp" && !check_names(*machine, kind_names, state_actions, complaint)) {
         std::cerr << "fsmtable-gen: " << input << ": " << complaint << "\n";
         return 1;
     }
@@ -632,13 +880,19 @@ int main(int argc, char** argv) {
     names.space = space;
     names.prefix = machine->name;
 
-    std::ostringstream header;
-    // The fingerprint covers the named canonical form: renaming a kind changes the emitted
-    // header, so it has to change this too. A file that declares no names hashes exactly what it
-    // always hashed, because the two dumps are the same text.
-    emit_header(header, names, *machine, kind_names, state_actions, input,
-                fingerprint(fsmtable::dump(*machine, kind_names, state_actions)));
-    const std::string rendered = header.str();
+    // The fingerprint covers the named canonical form: renaming a kind changes the emitted code,
+    // so it has to change this too. A file that declares no names hashes exactly what it always
+    // hashed, because the two dumps are the same text.
+    const std::uint64_t canonical_fingerprint
+        = fingerprint(fsmtable::dump(*machine, kind_names, state_actions));
+    std::ostringstream rendered_stream;
+    if (target == "deno")
+        emit_deno(rendered_stream, *machine, kind_names, state_actions, input,
+                  canonical_fingerprint);
+    else
+        emit_header(rendered_stream, names, *machine, kind_names, state_actions, input,
+                    canonical_fingerprint);
+    const std::string rendered = rendered_stream.str();
 
     if (output.empty()) {
         std::cout << rendered;
