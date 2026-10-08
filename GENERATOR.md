@@ -229,7 +229,9 @@ the mode honest.
 * **A drift probe is the anti-drift tooth.** Nothing regenerates a committed file by accident,
   so nothing notices when the `.fsm` and the artifact come apart — the probe does. It
   regenerates to a temporary file and diffs the two, and it runs only when the generator is
-  present, so a machine without `fsmtable-gen` **skips** rather than lies. That is the same
+  present, so a machine without `fsmtable-gen` **skips** rather than lies — which is why
+  installing the engine is step one: `cmake --install build-release --prefix ~/.local` (the
+  README's "Install the tools"), and then the probe verifies instead of skipping. That is the same
   `when = "tool:<name>"` rule the `format`, `tidy`, `fuzz` and `deno` stages here already use:
 
       [stage.generated]

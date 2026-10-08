@@ -54,6 +54,26 @@ fails loudly without them, because the differential oracle needs them). The `den
 `deno` — 2.9.6 is what it is gated with here — and skips itself rather than failing when `deno` is
 not on the PATH.
 
+## Install the tools (once per machine)
+
+Every command above runs `./build/fsmtable-gen`, which exists only while this checkout is built.
+A consumer repository does not have this tree, and its committed-artifact recipe leans on the
+engine being on the PATH: a drift probe declared `when = "tool:fsmtable-gen"` has teeth exactly
+where the tool is installed and **skips** where it is not, and a skip reads as green. So
+installing FSMTable is the first step of that recipe, not an afterthought:
+
+    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-release -j
+    cmake --install build-release --prefix ~/.local   # -> ~/.local/bin/fsmtable-gen
+                                                      #    ~/.local/bin/fsmtable-inspect
+
+The prefix belongs to `--install`, and Release is the configuration to install: this is the
+engine every repo on the machine runs, the way KitCI's `kit-ci` is installed once per machine.
+Both tools go on the PATH together, because they are one engine's two halves — the generator
+writes an artifact, the inspector reads it back. Installing also removes a trap: a probe that
+finds `fsmtable-gen` wherever the shell happens to point it may be reading a build directory
+from an old checkout rather than the binary the machine runs.
+
 ## The format, in one screen
 
     version 1                                  # always the first non-comment line

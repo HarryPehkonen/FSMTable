@@ -121,6 +121,18 @@ add_executable(fsmtable-inspect examples/inspector/inspector.cpp)
 target_link_libraries(fsmtable-inspect PRIVATE fsmTable)
 target_compile_options(fsmtable-inspect PRIVATE ${FSMTABLE_WARNINGS})
 
+# One install, then every repo on the machine runs the same engine:
+#   cmake --install build-release --prefix ~/.local   ->  ~/.local/bin/fsmtable-gen
+#                                                          ~/.local/bin/fsmtable-inspect
+# A consumer repo carries only its machine and the recipe (GENERATOR.md, "Two ways to consume a
+# generated machine"): the tools are installed once per machine rather than built beside every
+# tree — the model KitCI already set for gate engines. Both shipped tools install together,
+# because they are one engine's two halves: a consumer's drift probe names `fsmtable-gen`, and
+# `fsmtable-inspect` is what the same reader reaches for on the artifact it guards. Installing
+# is also what keeps a probe honest: pointed at this tree's `build/`, it reads whatever the last
+# build left there; pointed at a prefix, it reads the binary the machine actually runs.
+install(TARGETS fsmtable_gen fsmtable-inspect RUNTIME DESTINATION bin)
+
 if(FSMTABLE_BUILD_TESTS)
     include(CTest)
     find_package(GTest REQUIRED)
@@ -327,6 +339,16 @@ if(FSMTABLE_BUILD_TESTS)
     # teeth are proved by sabotage in that script's own terms.
     add_test(NAME docs_claims_hold
         COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && sh tools/check-doc-claims.sh \"$<TARGET_FILE:fsmtable_gen>\" \"$<TARGET_FILE:fsmtable-inspect>\"")
+    # The install rule, as a test rather than a promise. `cmake --install` into a throwaway
+    # prefix has to put BOTH tools there, and the installed generator has to RUN from a cwd that
+    # is not this tree — the two things a consumer relies on, and the two a renamed target or a
+    # dropped install() would break silently: the binaries keep building and running in `build/`
+    # either way, so nothing else in this gate would notice (the same class INCIDENTS.md records
+    # for the symlink trap). The path needs no quoting — mktemp and this build tree have no
+    # spaces — and the trap removes the prefix however the chain ends, so the case leaves no
+    # directory behind.
+    add_test(NAME install_puts_both_tools_on_the_prefix
+        COMMAND sh -c "prefix=$(mktemp -d); trap 'rm -rf $prefix' EXIT; cmake --install ${CMAKE_CURRENT_BINARY_DIR} --prefix $prefix > /dev/null && [ -x $prefix/bin/fsmtable-gen ] && [ -x $prefix/bin/fsmtable-inspect ] && (cd / && $prefix/bin/fsmtable-gen --help > /dev/null)")
 endif()
 
 # The fuzz target is written against libFuzzer's entry point, so it can only be LINKED
