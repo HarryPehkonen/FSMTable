@@ -8,7 +8,7 @@
 #
 # Usage, from the repository root, after a build:
 #
-#   sh tools/check-doc-claims.sh <fsmtable-gen> <fsmtable-inspect>
+#   sh tools/check-doc-claims.sh <fsmtable-gen> <fsmtable-inspect> <fsmtable-transform>
 #
 # What it re-derives:
 #
@@ -20,26 +20,33 @@
 #      quietly.
 #   2. examples/protocol/README.md — every `From_leaving_to_To` name written between backticks in
 #      that document must exist in the header the generator wrote for the recipe above.
-#   3. examples/inspector/README.md — its output block. Lines beginning `$ ` are commands; only
-#      `./build/fsmtable-inspect` is understood, and an unknown command is a failure rather than a
-#      skip. Every other line is what those commands must print, compared exactly with diff.
+#   3. examples/inspector/README.md — its output block. Lines beginning `$ ` are commands;
+#      `./build/fsmtable-inspect` and `./build/fsmtable-transform` are the two it understands, and
+#      an unknown command is a failure rather than a skip. Every other line is what those commands
+#      must print, compared exactly with diff. A blank line is a separator when a command follows
+#      it, and content anywhere else — an output can be a file, and a file has blank lines.
 #   4. examples/inspector/README.md — the tree check: every .fsm under corpus/ and examples/ must
 #      inspect clean, with a floor on how many files were checked, because a glob that matches
 #      nothing proves nothing.
 #   5. examples/inspector/README.md — the canonical-form recipe: writing onto the input really does
 #      empty it and then fail to parse, and the temporary-file form really does work. A documented
 #      footgun is still a claim about behaviour.
+#   6. TRANSFORM.md — its output block, the same way (3) reads the inspector's: the two renames it
+#      documents must print what it says, and so must the refusal it ends with. The commands there
+#      include one that exits 1 on purpose, so the block's commands are read for their OUTPUT and
+#      the exit codes stay the ctest cases' business.
 #
 # Exit codes: 0 every claim re-derived, 1 one of them did not hold, 2 the command line is wrong.
 set -u
 
-if [ "$#" -ne 2 ]; then
-    echo "usage: sh tools/check-doc-claims.sh <fsmtable-gen> <fsmtable-inspect>" >&2
+if [ "$#" -ne 3 ]; then
+    echo "usage: sh tools/check-doc-claims.sh <fsmtable-gen> <fsmtable-inspect> <fsmtable-transform>" >&2
     exit 2
 fi
 
 gen=$1
 inspect=$2
+transform=$3
 root=$(pwd)
 
 # The canonical-form recipe does its work in a temporary directory, so a relative tool path would
@@ -52,9 +59,13 @@ case "$inspect" in
     /*) : ;;
     *) inspect="$root/$inspect" ;;
 esac
+case "$transform" in
+    /*) : ;;
+    *) transform="$root/$transform" ;;
+esac
 
-if [ ! -x "$gen" ] || [ ! -x "$inspect" ]; then
-    echo "check-doc-claims: needs the built tools, got '$gen' and '$inspect'" >&2
+if [ ! -x "$gen" ] || [ ! -x "$inspect" ] || [ ! -x "$transform" ]; then
+    echo "check-doc-claims: needs the built tools, got '$gen', '$inspect' and '$transform'" >&2
     exit 2
 fi
 
@@ -177,32 +188,53 @@ check_output_block() {
     block_after "$start" "$doc" > "$work/block.txt"
     expected=$work/expected.txt
     actual=$work/actual.txt
-    : > "$expected"
+    commands=$work/commands.txt
     : > "$actual"
 
-    while IFS= read -r line; do
-        case "$line" in
-            '$ '*)
-                set -- ${line#\$ }
-                case "$1" in
-                    ./build/fsmtable-inspect)
-                        shift
-                        (cd "$root" && "$inspect" "$@") >> "$actual" 2>&1
-                        ;;
-                    *)
-                        fail "the output block in $doc runs a command this script does not know:" \
-                             "$line"
-                        ;;
-                esac
+    # The block, split into what the commands must print and the commands themselves. A blank
+    # line is a SEPARATOR exactly when a command follows it (or it closes the block); anywhere
+    # else it is content, because an output can be a file whose blank lines are the point
+    # (TRANSFORM.md's output is a machine, and a machine has blank lines in it). The rule the
+    # block always had — "a blank line separates the commands; it is not part of what they
+    # print" — is the `$ ` case below, unchanged.
+    awk -v start="$start" -v expected="$expected" -v commands="$commands" '
+        NR > start && /^```/ { if (inblock) exit; inblock = 1; next }
+        inblock { lines[++n] = $0 }
+        END {
+            for (i = 1; i <= n; ++i) {
+                if (lines[i] == "" && (i == n || substr(lines[i + 1], 1, 2) == "$ ")) continue
+                if (substr(lines[i], 1, 2) == "$ ") { print substr(lines[i], 3) > commands; continue }
+                print lines[i] > expected
+            }
+        }
+    ' "$doc"
+
+    # A block with no command would compare two empty files and pass: the same vacuity the tree
+    # check below guards against.
+    if [ ! -s "$commands" ]; then
+        fail "the output block in $doc runs no command, so nothing was checked"
+        return
+    fi
+
+    while IFS= read -r command; do
+        set -- $command
+        case "$1" in
+            ./build/fsmtable-inspect)
+                shift
+                (cd "$root" && "$inspect" "$@") >> "$actual" 2>&1
                 ;;
-            '')
-                : # a blank line separates the commands; it is not part of what they print
+            ./build/fsmtable-transform)
+                # One command in TRANSFORM.md's block refuses on purpose and exits 1: a block
+                # pins what a command PRINTS, and the exit codes are the ctest cases' business.
+                shift
+                (cd "$root" && "$transform" "$@") >> "$actual" 2>&1
                 ;;
             *)
-                printf '%s\n' "$line" >> "$expected"
+                fail "the output block in $doc runs a command this script does not know:" \
+                     "$command"
                 ;;
         esac
-    done < "$work/block.txt"
+    done < "$commands"
 
     if diff -u "$expected" "$actual" > "$work/diff.txt"; then
         note "the output block in $doc is what the tool prints"
@@ -288,6 +320,8 @@ check_output_block "$root/examples/inspector/README.md" 'Real output, on this re
 check_tree "$root/examples/inspector/README.md" 4
 check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonical form back needs' \
     "$root/examples/protocol/protocol.fsm"
+# The transform's own output block: two renames and one refusal, re-run and diffed line for line.
+check_output_block "$root/TRANSFORM.md" 'Real output, on this repository'
 
 if [ "$failed" -eq 0 ]; then
     printf 'check-doc-claims: every claim re-derived from the tools\n'

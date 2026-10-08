@@ -4,9 +4,10 @@ SPEC.md section 0: "If something is genuinely ambiguous, write the question into
 QUESTIONS.md and take the simplest reading rather than guessing elaborately." These are
 the only places I found a genuine choice to make — two in stage A (Q1, Q2), two in stage B
 (Q3, Q4), three in stage C (Q5, Q6, Q7), two in the generator that follows them (Q8, Q9),
-two in the calculator example (Q10, Q11), one in the named kinds addition (Q12) and two in
-the entry and exit addition (Q13, Q14). Each is a candidate for the spec to settle in a later
-revision; none changes the frozen API, the frozen test names or the row format.
+two in the calculator example (Q10, Q11), one in the named kinds addition (Q12), two in
+the entry and exit addition (Q13, Q14) and two in the rename transform that follows them
+(Q15, Q16). Each is a candidate for the spec to settle in a later revision; none changes the frozen
+API, the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
 
@@ -248,3 +249,37 @@ initial state needs setup calls it once after `make<M>()`; one that does not nev
 enters its initial state. It reads well until a caller creates a machine per line, per request or
 per test fixture and gets an unexpected action per construction — and the output would then depend
 on something the `.fsm` does not say.
+
+## Q15 — Is a rename that takes a name the file already uses ever legal?
+
+The rename transform (`TRANSFORM.md`) refuses a new name that another state (or kind) already
+holds, rather than merging two names into one. That rule has to be read against a list, because the
+command line may rename several names at once.
+
+**Reading taken:** the test is over the names the WHOLE list *produces*, not over each rename in
+turn. So `state:A=B` alone is refused when a `B` survives to be collided with, and
+`state:A=B state:B=A` is legal: the two renames swap the names, and the result holds each exactly
+once. The list applies at once — a chase, applying `A -> B` and then looking up `B`, is not a thing
+this tool does or could do safely, since the second rename would move the first one's result.
+
+**The alternative:** test each rename against the names the file has now. Every swap is then
+refused, and a caller who wants to exchange two names has to invent a temporary name and make three
+edits — a worse answer to a question the format does not force.
+
+## Q16 — Is a `state <name> entry …` line a site a rename rewrites?
+
+SPEC.md section 2's row format has four directives that carry a state name: `initial`, a row's
+`from` and `to`, and a `state` line's own first field, which decorates a state with entry and exit
+clauses (ENTRY_EXIT.md). A rename has to take all four or write a file that is wrong.
+
+**Reading taken:** yes, the `state` line is a rename site, and only its first field. The entry and
+exit action names further along the same line are NOT renamed: an action is not a state, and a
+state that shares a spelling with an action must not drag it. This is the one site the card's own
+list of sites did not name, and the reason it cannot be left out is rule 1's: the rewritten file
+has to parse, and a decoration whose state name no longer exists is refused by the parser (a
+misspelling rule 7's pattern cannot catch).
+
+**The alternative:** refuse to rename a decorated state at all — "rename it by hand" — which keeps
+the site list short at the cost of refusing a legal machine, and of making a rename's success depend
+on something the caller did not ask about (whether someone wrote a `state` line elsewhere in the
+file).

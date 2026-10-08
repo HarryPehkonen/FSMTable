@@ -40,8 +40,9 @@ endif()
 
 # Four translation units since 2026-10-06: the single 754-line src/fsmtable.cpp held the format's
 # vocabulary, the parser, the writer and the graph analysis, and a reader looking for one had to walk
-# past the other three. No logic changed in the split.
-add_library(fsmTable src/tokens.cpp src/parse.cpp src/dump.cpp src/analysis.cpp)
+# past the other three. No logic changed in the split. `transform.cpp` is the fifth (2026-10-08): the
+# text -> text direction, beside the parser and the writer rather than in the tool that calls it.
+add_library(fsmTable src/tokens.cpp src/parse.cpp src/dump.cpp src/analysis.cpp src/transform.cpp)
 target_include_directories(fsmTable PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_options(fsmTable PRIVATE ${FSMTABLE_WARNINGS})
 
@@ -121,17 +122,26 @@ add_executable(fsmtable-inspect examples/inspector/inspector.cpp)
 target_link_libraries(fsmtable-inspect PRIVATE fsmTable)
 target_compile_options(fsmtable-inspect PRIVATE ${FSMTABLE_WARNINGS})
 
+# --- the transform: the text -> text direction (TRANSFORM.md). It reads a .fsm at run time and
+# writes one back out, so like the inspector it links the library and nothing else. Its first verb
+# is `rename`; a second (merge) would be a new card rather than a new flag.
+add_executable(fsmtable-transform transform/fsmtable-transform.cpp)
+target_link_libraries(fsmtable-transform PRIVATE fsmTable)
+target_compile_options(fsmtable-transform PRIVATE ${FSMTABLE_WARNINGS})
+
 # One install, then every repo on the machine runs the same engine:
 #   cmake --install build-release --prefix ~/.local   ->  ~/.local/bin/fsmtable-gen
 #                                                          ~/.local/bin/fsmtable-inspect
+#                                                          ~/.local/bin/fsmtable-transform
 # A consumer repo carries only its machine and the recipe (GENERATOR.md, "Two ways to consume a
 # generated machine"): the tools are installed once per machine rather than built beside every
-# tree — the model KitCI already set for gate engines. Both shipped tools install together,
-# because they are one engine's two halves: a consumer's drift probe names `fsmtable-gen`, and
-# `fsmtable-inspect` is what the same reader reaches for on the artifact it guards. Installing
-# is also what keeps a probe honest: pointed at this tree's `build/`, it reads whatever the last
-# build left there; pointed at a prefix, it reads the binary the machine actually runs.
-install(TARGETS fsmtable_gen fsmtable-inspect RUNTIME DESTINATION bin)
+# tree — the model KitCI already set for gate engines. The shipped tools install together, because
+# they are one engine's halves: a consumer's drift probe names `fsmtable-gen`, `fsmtable-inspect`
+# is what the same reader reaches for on the artifact it guards, and `fsmtable-transform` is what
+# it reaches for when a name in the machine has to move. Installing is also what keeps a probe
+# honest: pointed at this tree's `build/`, it reads whatever the last build left there; pointed at
+# a prefix, it reads the binary the machine actually runs.
+install(TARGETS fsmtable_gen fsmtable-inspect fsmtable-transform RUNTIME DESTINATION bin)
 
 if(FSMTABLE_BUILD_TESTS)
     include(CTest)
@@ -233,6 +243,17 @@ if(FSMTABLE_BUILD_TESTS)
     target_compile_options(fsmTable_state_actions_tests PRIVATE ${FSMTABLE_WARNINGS})
     add_test(NAME fsmTable_state_actions_tests COMMAND fsmTable_state_actions_tests)
 
+    # The text -> text direction (TRANSFORM.md): `fsmtable::rename` and the rename spelling a
+    # command line reads. Its own binary, like the two additions above. It walks the corpus and
+    # the fixtures, so it needs both paths the same way the parser's suite does.
+    add_executable(fsmTable_transform_tests tests/transform_test.cpp)
+    target_link_libraries(fsmTable_transform_tests PRIVATE fsmTable GTest::gtest_main)
+    target_compile_options(fsmTable_transform_tests PRIVATE ${FSMTABLE_WARNINGS})
+    target_compile_definitions(fsmTable_transform_tests PRIVATE
+        FSMTABLE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/corpus"
+        FSMTABLE_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME fsmTable_transform_tests COMMAND fsmTable_transform_tests)
+
     add_test(NAME calculator_session
         COMMAND sh -c "\"$<TARGET_FILE:calculator>\" < \"${FSMTABLE_CALCULATOR_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_CALCULATOR_DIR}/input/session.expected\" -")
 
@@ -327,6 +348,58 @@ if(FSMTABLE_BUILD_TESTS)
     add_test(NAME inspect_graph_needs_a_file
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-inspect>\" --graph > /dev/null 2>&1; [ $? -eq 2 ]")
 
+    # The transform (TRANSFORM.md), as ctest cases. What it PRINTS is pinned exactly by
+    # tools/check-doc-claims.sh, which re-runs the invocations TRANSFORM.md documents and diffs
+    # them line for line; these cases pin the EXIT CODES — the part a script or a hook uses — and
+    # the one property a command line can show on its own: that a file's comments are still there
+    # afterwards, and that a rename and its inverse are byte-identical to doing nothing.
+    add_test(NAME transform_writes_a_renamed_machine
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Stop machine:TrafficLight=Lamp); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(transform_writes_a_renamed_machine PROPERTIES PASS_REGULAR_EXPRESSION
+        "transition Stop --1--> Green action on_red_green")
+    add_test(NAME transform_keeps_the_comments_while_a_state_moves
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${FSMTABLE_PROTOCOL_DIR}/protocol.fsm\" state:SynSent=Opened); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(transform_keeps_the_comments_while_a_state_moves PROPERTIES PASS_REGULAR_EXPRESSION
+        "# A connection lifecycle, with timeouts.")
+    add_test(NAME transform_leaves_the_rows_the_rename_does_not_reach
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Green=Vert); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 0 ]")
+    set_tests_properties(transform_leaves_the_rows_the_rename_does_not_reach PROPERTIES PASS_REGULAR_EXPRESSION
+        "transition Yellow --3--> Red when ge 30")
+    add_test(NAME transform_refuses_a_collision
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Green 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 1 ]")
+    set_tests_properties(transform_refuses_a_collision PROPERTIES PASS_REGULAR_EXPRESSION
+        "collides with the state 'Green'")
+    add_test(NAME transform_refuses_an_unknown_name
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Nope=Amber > /dev/null 2>&1; [ $? -eq 1 ]")
+    add_test(NAME transform_refuses_a_malformed_rename
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" Red=Green > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_refuses_an_unknown_target
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" colour:Red=Green > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_refuses_the_same_name_twice
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=A state:Red=B > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_refuses_a_file_that_does_not_parse
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/invalid_junk.fsm\" state:A=B 2>&1); code=$?; printf '%s\\n' \"$out\"; [ $code -eq 2 ]")
+    set_tests_properties(transform_refuses_a_file_that_does_not_parse PROPERTIES PASS_REGULAR_EXPRESSION
+        "invalid_junk.fsm:4:")
+    add_test(NAME transform_refuses_a_file_it_cannot_read
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/no_such_file.fsm\" state:A=B > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_needs_a_command
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_refuses_an_unknown_command
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" frobnicate \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_rename_needs_a_file
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_rename_needs_a_rename
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_refuses_an_unknown_option
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" --canonical rename x.fsm state:A=B > /dev/null 2>&1; [ $? -eq 2 ]")
+    add_test(NAME transform_help_exits_zero
+        COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" --help > /dev/null; [ $? -eq 0 ]")
+    # A rename and its inverse are the original bytes — and the first rename really did move
+    # something, so the case cannot pass by doing nothing at all.
+    add_test(NAME transform_a_rename_and_its_inverse_are_the_original_bytes
+        COMMAND sh -c "original=$(cat \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\"); first=$(\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/examples/inspector/dirty.fsm\" state:Start=Begin); second=$(printf '%s\\n' \"$first\" | \"$<TARGET_FILE:fsmtable-transform>\" rename /dev/stdin state:Begin=Start); [ -n \"$first\" ] && [ \"$first\" != \"$second\" ] && [ \"$second\" = \"$original\" ]")
+
     # Every relative link in a markdown file in this tree has to point at something. The script
     # carries the reason it exists; the short version is that a false reference to a file this
     # repository does not have reached a shipped README once already.
@@ -338,17 +411,17 @@ if(FSMTABLE_BUILD_TESTS)
     # has to still be a trap. tools/check-doc-claims.sh lists exactly what it re-derives, and its
     # teeth are proved by sabotage in that script's own terms.
     add_test(NAME docs_claims_hold
-        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && sh tools/check-doc-claims.sh \"$<TARGET_FILE:fsmtable_gen>\" \"$<TARGET_FILE:fsmtable-inspect>\"")
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && sh tools/check-doc-claims.sh \"$<TARGET_FILE:fsmtable_gen>\" \"$<TARGET_FILE:fsmtable-inspect>\" \"$<TARGET_FILE:fsmtable-transform>\"")
     # The install rule, as a test rather than a promise. `cmake --install` into a throwaway
-    # prefix has to put BOTH tools there, and the installed generator has to RUN from a cwd that
-    # is not this tree — the two things a consumer relies on, and the two a renamed target or a
-    # dropped install() would break silently: the binaries keep building and running in `build/`
+    # prefix has to put ALL THREE tools there, and the installed generator has to RUN from a cwd
+    # that is not this tree — the two things a consumer relies on, and the two a renamed target or
+    # a dropped install() would break silently: the binaries keep building and running in `build/`
     # either way, so nothing else in this gate would notice (the same class INCIDENTS.md records
     # for the symlink trap). The path needs no quoting — mktemp and this build tree have no
     # spaces — and the trap removes the prefix however the chain ends, so the case leaves no
     # directory behind.
-    add_test(NAME install_puts_both_tools_on_the_prefix
-        COMMAND sh -c "prefix=$(mktemp -d); trap 'rm -rf $prefix' EXIT; cmake --install ${CMAKE_CURRENT_BINARY_DIR} --prefix $prefix > /dev/null && [ -x $prefix/bin/fsmtable-gen ] && [ -x $prefix/bin/fsmtable-inspect ] && (cd / && $prefix/bin/fsmtable-gen --help > /dev/null)")
+    add_test(NAME install_puts_every_tool_on_the_prefix
+        COMMAND sh -c "prefix=$(mktemp -d); trap 'rm -rf $prefix' EXIT; cmake --install ${CMAKE_CURRENT_BINARY_DIR} --prefix $prefix > /dev/null && [ -x $prefix/bin/fsmtable-gen ] && [ -x $prefix/bin/fsmtable-inspect ] && [ -x $prefix/bin/fsmtable-transform ] && (cd / && $prefix/bin/fsmtable-gen --help > /dev/null) && (cd / && $prefix/bin/fsmtable-transform --help > /dev/null)")
 endif()
 
 # The fuzz target is written against libFuzzer's entry point, so it can only be LINKED

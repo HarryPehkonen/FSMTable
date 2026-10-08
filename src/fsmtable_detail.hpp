@@ -35,6 +35,10 @@ constexpr long long kIntMax = 2147483647LL;
 
 std::string_view trim(std::string_view s);
 std::vector<std::string_view> split_fields(std::string_view line);
+// The format's idea of whitespace. It was file-private in tokens.cpp; transform.cpp splits a line
+// into fields WITH their offsets, and a second predicate could drift from this one and make the
+// two views of the same line disagree about where a field begins.
+bool is_space(char c);
 bool valid_name(std::string_view name);
 bool parse_bounded_int(std::string_view token, long long lo, long long hi, long long& out);
 ArrowKind read_arrow_kind(std::string_view token);

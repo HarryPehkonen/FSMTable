@@ -10,7 +10,10 @@ So a machine is written as text, checked by a parser with a frozen set of rules,
 a `constexpr` table that runs.
 
 * **The text is the source.** The library reads a machine from text and writes one back out;
-  `dump` is canonical, and a parse → dump → parse round trip is stable.
+  `dump` is canonical, and a parse → dump → parse round trip is stable. `fsmtable-transform` is the
+  direction that keeps a file's own bytes: it renames a name in a `.fsm` and writes the machine back
+  with every comment, blank line and untouched directive exactly where the file wrote it
+  (`TRANSFORM.md`).
 * **The generator is the point.** `fsmtable-gen` emits one self-contained C++ header per machine:
   scoped enums for the states and the event kinds, the rows in the format's canonical order, one
   declaration per action, and a factory. Rows are typed `fsmgine::compiled::Transition`, so the
@@ -31,6 +34,11 @@ format and the library API — are frozen text, and the additions sit below that
 frozen test, the corpus and the dump oracle pass unchanged. `REPORT.md` carries the deliveries
 and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not built yet.
 
+The text → text direction is the third tool: `fsmtable-transform` rewrites a machine in its own
+format — `rename` moves a state, a kind name or the machine's own name, and nothing else in the
+file moves with it, comments included. `TRANSFORM.md` is the contract, the exit codes and the
+limits.
+
 `examples/` holds three complete programs, each with its own tests and its own README: a calculator
 (the generator on arithmetic), a connection lifecycle with timeouts (the generator on time), and
 `fsmtable-inspect`, a tool that reads `.fsm` files (the library with no generator at all).
@@ -43,11 +51,14 @@ and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not
 
     ./build/fsmtable-gen my.fsm -o my.hpp      # or write the header to stdout
     ./build/fsmtable-gen my.fsm --target deno -o my.ts   # the same machine, as TypeScript
+    ./build/fsmtable-transform rename my.fsm state:Idle=Waiting   # a name moves; comments stay
     ./build/calculator                         # the first worked example: a line in, an answer out
     ./build/protocol                           # the second: a connection lifecycle, script-driven
     ./build/fsmtable-inspect my.fsm            # the library without the generator
 
 `fsmtable-gen` exit codes: `0` written, `1` the input is unusable, `2` the command line is.
+`fsmtable-transform` carries its own three and differs in one place — a file that does not parse is
+the caller's mistake there too — so its table is the authority (`TRANSFORM.md`).
 Needs C++17, CMake, GTest, clang-format and clang-tidy for the gate, and FSMgine 2.1.0's headers
 at `~/hermes-workspace/FSMgine` (point `-DFSMTABLE_FSMGINE_DIR=<path>` elsewhere; configuration
 fails loudly without them, because the differential oracle needs them). The `deno` stage needs
@@ -66,13 +77,14 @@ installing FSMTable is the first step of that recipe, not an afterthought:
     cmake --build build-release -j
     cmake --install build-release --prefix ~/.local   # -> ~/.local/bin/fsmtable-gen
                                                       #    ~/.local/bin/fsmtable-inspect
+                                                      #    ~/.local/bin/fsmtable-transform
 
 The prefix belongs to `--install`, and Release is the configuration to install: this is the
 engine every repo on the machine runs, the way KitCI's `kit-ci` is installed once per machine.
-Both tools go on the PATH together, because they are one engine's two halves — the generator
-writes an artifact, the inspector reads it back. Installing also removes a trap: a probe that
-finds `fsmtable-gen` wherever the shell happens to point it may be reading a build directory
-from an old checkout rather than the binary the machine runs.
+The tools go on the PATH together, because they are one engine's halves — the generator writes an
+artifact, the inspector reads it back, and the transform edits the machine itself. Installing also
+removes a trap: a probe that finds `fsmtable-gen` wherever the shell happens to point it may be
+reading a build directory from an old checkout rather than the binary the machine runs.
 
 ## The format, in one screen
 
@@ -94,6 +106,8 @@ number and a message.
 
     SPEC.md          the specification: the frozen rules and API, and the stages to build
     GENERATOR.md     the tool, the emitted artifact, the exit codes, the limits
+    TRANSFORM.md     `fsmtable-transform` — a rename applied to the text: what moves, what
+                     cannot, and why it is not a `dump`
     NAMED_KINDS.md   `kind <name> = <n>` — names for event kinds, so rows read `--open-->`
     ENTRY_EXIT.md    `state <name> entry ... exit ...` — entry and exit actions per state
     QUESTIONS.md     every place the spec left a choice, and the reading taken
@@ -109,8 +123,9 @@ number and a message.
 
 ## Layout
 
-    src/             the library: fsmtable.hpp (the frozen API) and fsmtable.cpp
+    src/             the library: fsmtable.hpp (the frozen API) and the files behind it
     gen/             fsmtable-gen: the text → code direction
+    transform/       fsmtable-transform: the text → text direction
     tests/           the gtest suites, the corpus, the fixtures, the differential oracle
     corpus/          .fsm files the tests and the fuzzer share
     examples/        calculator, protocol, inspector — three complete consumers

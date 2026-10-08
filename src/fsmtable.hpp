@@ -1,6 +1,7 @@
 // FSMTable — stage A public API, transcribed from SPEC.md section 4 (frozen).
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -115,5 +116,56 @@ std::optional<Machine> parse(std::string_view text, Error& error, std::vector<Ki
                              std::vector<StateAction>& state_actions);
 std::string dump(const Machine& m, const std::vector<KindName>& kind_names,
                  const std::vector<StateAction>& state_actions);
+
+// The text -> text direction (2026-10-08). Not part of the frozen section 4 block above: this is
+// an addition in the shape KindName and StateAction took, and it changes neither the row format
+// nor the version number — what it writes is version 1 text.
+//
+// A rename names something and what to call it instead, spelled the way a tool's command line
+// spells one:
+//
+//     machine:TrafficLight=Lamp    state:Red=Green    kind:tick=beat
+//
+// `parse_rename_spec` reads that spelling — it is also where SPEC.md rule 7's name pattern is
+// checked, so a caller does not need a second validator — and `rename` applies a whole list of
+// them.
+//
+// `rename` is a SURGICAL TEXT EDIT, not a dump. `dump` is canonical text with no comments in it,
+// and the fleet's .fsm files carry comments that are load-bearing, so the rewrite touches only the
+// fields that carry a renamed name — `machine`, `initial`, `state`, `kind`, and a row's `from`,
+// `to` and the NAME inside its arrow — and every other byte of the file (every comment, every
+// blank line, every directive the rename does not reach, the spacing between the fields) comes
+// back exactly as it went in. A row that spells its kind as a NUMBER keeps its number: only a
+// name moves, and only where the file wrote the name.
+//
+// The parse tree is the judge, twice over. `rename` parses `text` itself, so a text that does not
+// parse is reported by `parse`'s own error and nothing is written; and it parses its own output
+// and compares, so what comes back is proved to be the machine the input was with the requested
+// names substituted.
+//
+// The list applies AT ONCE: `state:A=B state:B=A` is a swap, not a chase. The collision test is
+// over the result of the whole list rather than each rename in turn (QUESTIONS.md Q15), and
+// renaming a state onto a name a KIND holds is legal — the two are separate namespaces.
+//
+// Errors, all with `line == 0` (a rename is not tied to a line): an old name no directive uses,
+// or a new name another name already holds — never a silent merge, and the message names both
+// (the reading QUESTIONS.md Q16 records for a decorated state's line). A refused rename produces
+// no text, the way a refused parse produces no machine.
+struct Rename {
+    // Which namespace the name belongs to. Named the way the spec spells it on a command line.
+    enum class Target : std::uint8_t { Machine, State, Kind };
+
+    Target target = Target::State;
+    std::string from;
+    std::string to;
+};
+
+// Reads `machine:Old=New`, `state:Old=New` or `kind:Old=New`. False when `spec` is not one of
+// those three shapes or either name breaks rule 7, with `message` naming the fault and no
+// half-filled `rename`.
+bool parse_rename_spec(std::string_view spec, Rename& rename, std::string& message);
+
+std::optional<std::string> rename(std::string_view text, const std::vector<Rename>& renames,
+                                  Error& error);
 
 } // namespace fsmtable

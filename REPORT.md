@@ -192,3 +192,41 @@ The tool said so on its first run, against the machine it was built beside.
     GATE PASSED
     That line is from the run on commit 66cd3bd; this file is the only difference from that tree, and
     the run was repeated after it was added.
+
+
+## Appendix — the text → text direction: `fsmtable-transform`
+
+The first thing in this repository that reads a `.fsm` and writes a `.fsm` back. `rename` is its
+first verb: a state, a kind name or the machine's own name moves, and nothing else in the file moves
+with it.
+
+    what                                        document
+    fsmtable-transform rename                   TRANSFORM.md
+    the library call behind it                  src/fsmtable.hpp (the addition), src/transform.cpp
+    the tests                                   tests/transform_test.cpp — 26 cases
+    the checker that holds the doc's output     tools/check-doc-claims.sh (item 6)
+
+The decision the tool exists for is a refusal: **not** `parse` → edit the machine → `dump`. `dump` is
+canonical and has no comments in it, and the machines in this fleet carry comments that are the
+reason a reader can follow them at all, so a rename is a surgical text edit — the parse tree says
+where the names are, and only those bytes move. The cost is stated in TRANSFORM.md rather than
+hidden: the tool has to know where names live in the text, so a v2 directive is a change here too,
+and the rewrite is proved by re-parsing its own output (one extra parse of a file that was just
+parsed).
+
+Which tests do the work was measured rather than assumed. Sabotage: `edit_line` returns nothing for a
+comment line, which is what a canonical rewrite does to them. Six cases fail and the seventh — the
+one that compares the machine `parse` reads back, names substituted — still passes. A tool built on
+`dump` would pass the machine oracle and fail every byte-level case, so the byte-level cases are the
+ones holding this property up, and `tests/transform_test.cpp` says so at the top.
+
+The document checker grew one rule to be able to pin this tool's output. `tools/check-doc-claims.sh`
+read a blank line in a block as a separator between commands, which is fine for the inspector's
+output and impossible for a tool whose promise is that a file's blank lines survive. A blank line is
+now a separator exactly when a command follows it, and content anywhere else. Teeth: removing one
+blank line from TRANSFORM.md's block fails `docs_claims_hold` with that line in the diff.
+
+Two readings the card did not settle are written up rather than guessed at: Q15 (a collision is
+tested over the names the whole list produces, which is what makes `state:A=B state:B=A` a swap
+rather than a refusal) and Q16 (a `state <name> entry …` line IS a rename site — the card's own list
+of sites omitted it, and leaving it out would write a file that does not parse).
