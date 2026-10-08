@@ -31,10 +31,12 @@
 #   5. examples/inspector/README.md — the canonical-form recipe: writing onto the input really does
 #      empty it and then fail to parse, and the temporary-file form really does work. A documented
 #      footgun is still a claim about behaviour.
-#   6. TRANSFORM.md — its output block, the same way (3) reads the inspector's: the two renames it
-#      documents must print what it says, and so must the refusal it ends with. The commands there
-#      include one that exits 1 on purpose, so the block's commands are read for their OUTPUT and
-#      the exit codes stay the ctest cases' business.
+#   6. TRANSFORM.md — its output blocks, the same way (3) reads the inspector's: the renames it
+#      documents must print what it says, and so must the refusal it ends with; then the merge verb's
+#      block — the union of two fixtures, header included, and the unreachable-state finding that
+#      refuses it when the two machines share no name. The commands there include one that exits 1 on
+#      purpose, so the blocks' commands are read for their OUTPUT and the exit codes stay the ctest
+#      cases' business.
 #
 # Exit codes: 0 every claim re-derived, 1 one of them did not hold, 2 the command line is wrong.
 set -u
@@ -237,7 +239,7 @@ check_output_block() {
     done < "$commands"
 
     if diff -u "$expected" "$actual" > "$work/diff.txt"; then
-        note "the output block in $doc is what the tool prints"
+        note "the output block under '$marker' in $doc is what the tool prints"
     else
         fail "the output block in $doc is not what the tool prints:"
         sed 's/^/      /' "$work/diff.txt"
@@ -320,8 +322,10 @@ check_output_block "$root/examples/inspector/README.md" 'Real output, on this re
 check_tree "$root/examples/inspector/README.md" 4
 check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonical form back needs' \
     "$root/examples/protocol/protocol.fsm"
-# The transform's own output block: two renames and one refusal, re-run and diffed line for line.
+# The transform's own output blocks: the renames and the refusal, then the merge verb's union and its
+# unreachable-state finding. Re-run and diffed line for line.
 check_output_block "$root/TRANSFORM.md" 'Real output, on this repository'
+check_output_block "$root/TRANSFORM.md" 'Real output: a merge'
 
 if [ "$failed" -eq 0 ]; then
     printf 'check-doc-claims: every claim re-derived from the tools\n'

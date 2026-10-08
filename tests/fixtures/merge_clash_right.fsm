@@ -1,0 +1,5 @@
+version 1
+machine Right
+initial B
+kind tick = 1
+transition B --tick--> A

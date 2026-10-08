@@ -1,0 +1,7 @@
+# The right machine of a merge: its initial state is a name the left machine already has, which is
+# the seam the two fuse on.
+version 1
+machine Session
+initial SignedIn
+kind expire = 3
+transition SignedIn --expire--> Anonymous

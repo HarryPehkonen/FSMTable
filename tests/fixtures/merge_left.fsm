@@ -1,0 +1,8 @@
+# The left machine of a merge: it ends where the right machine begins.
+version 1
+machine Login
+initial Anonymous
+kind login = 1
+kind logout = 2
+transition Anonymous --login--> SignedIn
+transition SignedIn --logout--> Anonymous

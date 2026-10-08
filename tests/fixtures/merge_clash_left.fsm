@@ -1,0 +1,5 @@
+version 1
+machine Left
+initial A
+kind step = 1
+transition A --step--> B

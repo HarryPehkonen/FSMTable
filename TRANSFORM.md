@@ -1,13 +1,17 @@
 # fsmtable-transform — the text → text direction
 
-`fsmtable-transform` reads one `.fsm` file and writes one `.fsm` file: the same version 1 format in,
-the same version 1 format out, with names substituted. Its first verb is `rename`. It is the tool
-beside the library's [rename](src/fsmtable.hpp) the way `fsmtable-gen` is the tool beside the
-parser — and it is the first thing in this repository that writes a machine back as *text* rather
-than as code ([GENERATOR.md](GENERATOR.md) is the other direction).
+`fsmtable-transform` reads `.fsm` files and writes a `.fsm`: the same version 1 format in, the same
+version 1 format out. It has two verbs, and they differ in exactly one promise. `rename` rewrites
+ONE machine's names and keeps every byte it does not reach. `merge` composes TWO machines into one,
+and the result is a new machine — so what it writes is canonical text with a provenance header, not
+the two inputs' bytes with the names moved. The tool is what sits beside the library's
+[rename and merge](src/fsmtable.hpp) the way `fsmtable-gen` sits beside the parser, and it is the
+first thing in this repository that writes a machine back as *text* rather than as code
+([GENERATOR.md](GENERATOR.md) is the other direction).
 
 ```
 fsmtable-transform rename <file.fsm> <rename>...
+fsmtable-transform merge <a.fsm> <b.fsm> [-o <out.fsm>]
 fsmtable-transform --help
 
 A rename is <target>:<old>=<new>, one of
@@ -15,6 +19,11 @@ A rename is <target>:<old>=<new>, one of
   state:Red=Green             a state, wherever the file names one
   kind:tick=beat              a kind's NAME — a row that writes the number keeps it
 ```
+
+`merge` writes to stdout like `rename`, and `-o <out.fsm>` writes the very same bytes to a file
+instead. That option is the only one this tool has, and `rename` refuses it rather than ignoring it:
+a rename's output belongs on stdout, which is what makes the `> f.new && mv f.new f.fsm` shape below
+work.
 
 The output goes to stdout. `> f.fsm` therefore truncates the file before the tool reads it — the
 same shell trap `fsmtable-inspect --canonical` documents; the safe shape is
@@ -112,7 +121,85 @@ beginning `$ ` are the commands it runs, and every other line is what those comm
 The last command exits 1, which the block does not pin — the exit codes are pinned by ctest cases
 in `CMakeLists.txt` instead.
 
-## The rules
+## The merge verb — two machines composed into one
+
+`merge` is the other direction the same file shape opened: two version 1 machines in, one version 1
+machine out. What makes it a verb of its own rather than a flag on `rename` is that its output is a
+NEW machine, and the composition policy has to be written down rather than inferred from the two
+inputs:
+
+* **A state name the two machines share is ONE state.** That shared name is the seam, and it is the
+  whole point of composing: the first machine's `Done` is the second machine's `Initial`. Nothing
+  here inspects what each machine meant by the name — you fuse because you mean it, and a
+  composition where the two meant different things is a mistake this tool cannot see.
+* **The first machine's name and `initial` win.** The second machine's initial becomes an ordinary
+  state, and its former initial-entry clause is dropped with a warning on stderr: creation is not
+  entering ([ENTRY_EXIT.md](ENTRY_EXIT.md)), and a merged machine is created. When both machines
+  begin in the same state, that state *is* the merged initial and nothing is dropped.
+* **The two files may not disagree about a kind.** One number named differently by the two, or one
+  name standing for two numbers, is a refusal that names both declarations, because the union would
+  hold two declarations for one thing. Renaming a kind out of the way first is exactly what `rename`
+  is for.
+* **The two files may not both give a `(from, kind)` pair a row of the same guardedness.** SPEC.md
+  rule 9 allows one guarded row and one unguarded row per pair; the union would hold two of one
+  kind. A guarded row from one machine and an unguarded row from the other are the pair the format
+  has room for, and they merge.
+* **The result has to be a machine, and a connected one.** The union is dumped and parsed back, and
+  every state of it has to be reachable from the merged initial. A merge that leaves a state out of
+  reach is the composition failing to meet — the two machines share no name, and nothing leads from
+  the first into the second — and it is refused with the states named rather than written to a file.
+  That is the finding this verb exists to report, and the next block ends with the smallest example
+  of it.
+
+The output is canonical text, so **a merge does not keep the two files' comments** — the thing
+`rename` exists to keep. That is not the two verbs contradicting each other, it is what they are
+named for: a rename edits a file a reader already has, and a merge writes a file no reader has yet.
+What a merged file carries instead is a provenance header, with the three claims a generated
+artifact's header makes ([GENERATOR.md](GENERATOR.md)):
+
+* the two parents, each with the machine name it had, so the union's own name (`Login` below) is not
+  the only identity left in the file;
+* the exact command that merges them again — with `<this file>` in place of the output path, the
+  placeholder the generator's header uses, so the same merge written to two places produces one file
+  rather than two;
+* the fingerprint of the canonical form (FNV-1a 64), the same value `fsmtable-gen` stamps into a
+  header generated from the same machine, so a merged file and an artifact can be compared without
+  diffing text.
+
+## Real output: a merge
+
+```
+$ ./build/fsmtable-transform merge tests/fixtures/merge_left.fsm tests/fixtures/merge_right.fsm
+# Merged by fsmtable-transform from tests/fixtures/merge_left.fsm (machine Login)
+# and tests/fixtures/merge_right.fsm (machine Session), fused on the state names the two
+# machines share. Re-merge with: fsmtable-transform merge tests/fixtures/merge_left.fsm tests/fixtures/merge_right.fsm -o <this file>
+# Fingerprint of the canonical form (FNV-1a 64): 0xE13EEFCA61697ED7
+version 1
+machine Login
+initial Anonymous
+kind login = 1
+kind logout = 2
+kind expire = 3
+transition Anonymous --login--> SignedIn
+transition SignedIn --logout--> Anonymous
+transition SignedIn --expire--> Anonymous
+
+$ ./build/fsmtable-transform merge corpus/minimal.fsm corpus/traffic_light.fsm
+corpus/minimal.fsm + corpus/traffic_light.fsm: the merge leaves 3 unreachable state(s) — no path from the merged initial 'A': Green, Yellow, Red — the two machines do not meet there; give the second machine a state name the first already reaches, or a row into it
+```
+
+The two fixtures are the smallest composition there is: `merge_left.fsm` names `Anonymous` and
+`SignedIn`, `merge_right.fsm` begins in `SignedIn`, and so `SignedIn` is the seam and comes out
+once — the union has three rows and two states. The second command is the refusal: `minimal.fsm`
+begins in `A` and has no rows, and the traffic light's cycle has no name in common with it, so
+nothing leads into the cycle, its three states are unreachable, and no machine is written.
+
+Read both for what a merge is *not*: the two fixtures carry comments and neither survives, and
+`merge_right.fsm`'s own machine name `Session` appears only in the header, because the merged machine
+took the first parent's name. The block is compared line for line on every gate run, the same way
+the block above it is.
+
+## The rename's rules
 
 * **The parse tree is the judge.** The file is parsed first, and a file that does not parse is
   refused before anything is written. Which field of a row holds a name — and whether an arrow's
@@ -135,13 +222,17 @@ in `CMakeLists.txt` instead.
 
 | code | meaning |
 | --- | --- |
-| 0 | the renamed machine was written |
-| 1 | the rename could not be made: an old name the file does not have, or a new name another name already holds |
-| 2 | the command line is wrong, or the file could not be read or parsed |
+| 0 | the transform was written: the renamed machine, or the union |
+| 1 | the transform could not be made — rename: an old name the file does not have, or a new name another name already holds; merge: a kind the two machines disagree about, a `(from, kind)` pair both give a row of the same guardedness, or a union that would leave a state unreachable |
+| 2 | the command line is wrong, or a file could not be read, parsed or written |
 
-The 1/2 split is the reason the tool parses the file itself before calling the library: a file that
-does not parse is the caller's (2), a rename that cannot be made is the rename's (1). It is the one
-place this tool's numbers differ from `fsmtable-gen`'s, which exits 1 for an input it cannot use.
+The 1/2 split is the reason the tool parses the files itself before calling the library: a file that
+does not parse is the caller's (2), a transform that cannot be made is the transform's (1). It is the
+one place this tool's numbers differ from `fsmtable-gen`'s, which exits 1 for an input it cannot use.
+`merge` needs the same split for one more reason — the line number a refusal carries belongs to one
+of the two files, and only the tool knows which one — which is why it parses both before it calls the
+library rather than leaving it to the library's error. A merge's warning, the dropped initial-entry
+clause, is printed and does not move the code: the union is well defined without the clause.
 
 ## The library calls behind it
 
@@ -149,11 +240,12 @@ place this tool's numbers differ from `fsmtable-gen`'s, which exits 1 for an inp
 fsmtable::parse(text, error, kind_names)          the reader, to know the machine and its names
 fsmtable::parse_rename_spec(spec, rename, message)  one `state:Old=New` off a command line
 fsmtable::rename(text, renames, error)            the rewrite, proved by re-parsing its own output
+fsmtable::merge(first, second, error)             the union, proved the same way and by reachability
 ```
 
-`SPEC.md` section 4's block is frozen and `rename` is an addition beside it, in the shape
+`SPEC.md` section 4's block is frozen and both verbs are additions beside it, in the shape
 [NAMED_KINDS.md](NAMED_KINDS.md) and [ENTRY_EXIT.md](ENTRY_EXIT.md) took: the frozen `parse` and
-`dump` signatures are unchanged, and the output is version 1 text.
+`dump` signatures are unchanged, and the output of either verb is version 1 text.
 
 ## Limits, stated rather than discovered
 
@@ -168,11 +260,23 @@ fsmtable::rename(text, renames, error)            the rewrite, proved by re-pars
   from moving when the state `open` does.
 * **A kind's number never moves.** Renaming a kind moves the name; a row that wrote `--3-->` still
   writes `--3-->`, because the number was never a name.
-* **There is no `merge` yet.** One machine in, one machine out. Composing two machines is the next
-  verb, and it is not here.
+* **A merge does not keep comments, and cannot be made to.** The two inputs keep theirs; the union
+  is a new machine and gets a provenance header instead. A merged file that has to carry a paragraph
+  of reasoning is a file to edit by hand afterwards, and the header says which two files to go back
+  to.
+* **A merge is not symmetric, and it is not a `rename`.** The first machine's name and initial win,
+  so the same two files merged the other way round come out with the other machine's identity. And a
+  machine merged with itself is refused: fusion is by name, so every row would double, and rule 9
+  forbids two rows of one kind for a pair. Two files that grew from a common ancestor meet the same
+  wall on the rows they share, and the message names the pair.
+* **A state name is the only seam a merge has.** Two machines sharing no state name produce a
+  disconnected union, which is refused with the unreachable states named. There is no cross-machine
+  wiring to invent and no flag that turns the check off: the fix is a shared state name — or a
+  `rename` that makes one — rather than a second verb.
 * **The edit is textual, so a v2 directive is a change here too.** A new line kind that carries a
   name would need a case in `edit_line` — the cost of not going through `dump`, and the reason the
-  file's own comment says so.
+  file's own comment says so. `merge` is the cheaper half of that pair: it goes through `dump`, so a
+  new directive reaches it as soon as the writer knows about it.
 
 ## How to adapt it
 
@@ -203,9 +307,29 @@ A name that only some of the files have is not a problem: the ones that do not h
 that is the answer a caller wants — so the loop reads the exit code per file rather than putting
 `set -e` over a batch where a refusal is expected.
 
-**Add the verb you need.** `rename` is the first of them; the shape to follow is a function taking
-the text and a list, returning the rewritten text or an error with `line == 0`
-([src/fsmtable.hpp](src/fsmtable.hpp)) and a command that reads one file and writes one file, the
-way this one does. `tests/transform_test.cpp` is where its tests would go, and the two properties to
-hold are the two this verb is held to: the output parses to the machine the input was with the
-change asked for, and every byte the change does not reach is unchanged.
+**Compose two machines into a new file** — one `merge`, and the header records the command so the
+union can be repeated rather than remembered:
+
+```sh
+fsmtable-transform merge login.fsm session.fsm -o session_full.fsm
+fsmtable-gen session_full.fsm -o fsm_session_full.hpp      # the union, as code
+```
+
+A merge that exits 1 wrote nothing, so `> out.fsm` is the shape that leaves an empty file behind;
+the two-step form the rename recipe uses is the one to keep here too:
+
+```sh
+fsmtable-transform merge login.fsm session.fsm > session_full.new && mv session_full.new session_full.fsm
+```
+
+The union is a source file of its own, and it is the one file in this direction that is *committed*:
+the two parents stay as they are, and the header's fingerprint says which union an artifact was
+generated from.
+
+**Add the verb you need.** The two here are the shape to follow: a function taking text and returning
+text or an error with `line == 0` ([src/fsmtable.hpp](src/fsmtable.hpp)), and a command that reads
+files and writes one. `rename` keeps the input's bytes and is held to that; `merge` writes a new
+machine and is held to the two properties a new machine has — the output parses, and every state in
+it is reachable from the initial. `tests/transform_test.cpp`
+and `tests/merge_test.cpp` are where the tests would go, and both suites say at the top which
+property is the one holding them up.

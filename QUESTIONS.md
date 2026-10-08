@@ -5,8 +5,9 @@ QUESTIONS.md and take the simplest reading rather than guessing elaborately." Th
 the only places I found a genuine choice to make — two in stage A (Q1, Q2), two in stage B
 (Q3, Q4), three in stage C (Q5, Q6, Q7), two in the generator that follows them (Q8, Q9),
 two in the calculator example (Q10, Q11), one in the named kinds addition (Q12), two in
-the entry and exit addition (Q13, Q14) and two in the rename transform that follows them
-(Q15, Q16). Each is a candidate for the spec to settle in a later revision; none changes the frozen
+the entry and exit addition (Q13, Q14), two in the rename transform that follows them
+(Q15, Q16) and four in the merge transform that completes the pair (Q17–Q20). Each is a
+candidate for the spec to settle in a later revision; none changes the frozen
 API, the frozen test names or the row format.
 
 ## Q1 — What line number does an error carry when the *required directive is absent*?
@@ -283,3 +284,89 @@ misspelling rule 7's pattern cannot catch).
 the site list short at the cost of refusing a legal machine, and of making a rename's success depend
 on something the caller did not ask about (whether someone wrote a `state` line elsewhere in the
 file).
+
+## Q17 — What line number does a merge refusal carry, when its two inputs are separate files?
+
+The merge transform (`TRANSFORM.md`) composes two machines, and the card that specified it asks a
+kind collision to be reported "naming both lines". `Error` carries one `line`, and the parse tree has
+none to give: the parser resolves names while parsing and does not keep where they were written
+(NAMED_KINDS.md's "resolved while parsing" is the same fact, read the other way).
+
+**Reading taken:** `line == 0` for every refusal the merge itself makes, and the message names the two
+DECLARATIONS rather than two line numbers — `kind 1 is named 'step' by one machine and 'tick' by the
+other`, `the name 'tick' stands for kind 1 in one machine and kind 2 in the other`, `the two machines
+both have an unguarded row for state 'X' and kind 1`. Those name exactly the two things a caller has
+to go and change, which is what "both lines" was for. The one refusal that *does* carry a line is an
+input that does not parse, and there the tool prints `parse`'s own line against the path it belongs
+to — which is why the tool parses both files itself before calling the library.
+
+**The alternative:** thread positions through the reader (a new `parse` that records where each
+declaration was, or an error type holding two `file:line` pairs) so a collision could point at both
+lines directly. It is the better message and the more expensive one: a second reader entry point, a
+second place for the parser to keep positions, and a merge error that knows about file names — a
+concept the library does not have and the tool does.
+
+## Q18 — Is a union that leaves a state unreachable a refusal, or a machine with a finding?
+
+The card asks the question and answers half of it in its own words ("print it as a finding, still
+exit 0? NO: exit 1"), leaving the part that matters open: whether the machine is written anyway. A
+merge of two machines that share no state name is disconnected by construction — everything after the
+seam is unreachable — so this is not a rare case, it is the ordinary case for two unrelated machines.
+
+**Reading taken:** a refusal. Nothing is written, the exit code is 1, and the finding names the states
+(`the merge leaves 3 unreachable state(s) — no path from the merged initial 'A': Green, Yellow, Red`).
+The card phrases its requirement on the output — the result "must parse and reach every state from the
+initial" — and a requirement the output cannot meet is a reason not to produce it.
+
+**The alternative:** write the union and report the finding, the way `fsmtable-inspect` reads an
+unreachable state as a property of a machine rather than a failure of the run. It is defensible, and
+it is what the inspector's convention literally does. What decided it here is the difference between
+the two tools: an inspector reads a file that exists, and a merge creates one. A new file that is a
+machine with a state nobody can reach is a worse thing to leave on disk than no file, and the caller
+who wants the union anyway can add the state name that connects them and run it again.
+
+**The consequence, recorded rather than discovered later:** merging unrelated machines always exits 1.
+The seam is a state NAME the two machines share, so a composition that has no shared name is a
+composition that does not meet — and inventing a cross-machine row to join them would be inventing
+semantics the format has no way to write down (there is no `merge`-only directive, and a v2 one is
+the format decision this is deliberately not making).
+
+## Q19 — Whose identity does the merged machine take, and what is it called?
+
+The card settles `initial` — "the merged machine takes A's initial" — and says nothing about
+`machine`, which is the same kind of choice: both machines have a name and the union can only have
+one. It also leaves one edge of the initial rule unstated: what happens when the two machines begin in
+the same state, so that the second machine's initial is the merged initial rather than an ordinary
+state.
+
+**Reading taken:** the merged machine takes the first machine's name as well as its initial, and the
+provenance header names both parents with their own machine names, so nothing is lost — the union's
+own name says which machine it is, and the header says which two it came from. When the two initial
+names are equal the state IS the merged initial, and nothing is dropped: the "former initial" wording
+only describes a state that stopped being one.
+
+**The alternative:** compose the name (`Login+Session`), which is a name no `.fsm` can write back —
+`+` is not in rule 7's pattern — so the merged file could not be renamed, regenerated or parsed back
+under the name it carries. The header is the honest place for the second identity.
+
+## Q20 — Which clause wins when both machines decorate one state?
+
+Entry and exit clauses (ENTRY_EXIT.md) belong to a state, and two machines may decorate the same
+fused state differently, or one may decorate it and the other not. The card settles only the second
+machine's initial-entry clause: it is dropped, with a warning.
+
+**Reading taken:** fuse per state and per clause — the first machine's `entry` wins where both declare
+one, and its `exit` likewise, and a clause only the second machine declares is carried — with the one
+exception the card names: the entry clause of the second machine's former initial is dropped and the
+drop is reported on stderr, because the merged machine is CREATED rather than entered (ENTRY_EXIT.md,
+Q14) and that clause described a machine being built.
+
+**The honest edge of it:** the drop is lossy in one direction, and it is worth saying so. If the
+second machine had a row leading back into its own initial state, that row ran nothing at the start
+and would run nothing at the end either — the clause is gone — while a row into the same state from
+the first machine's side would have run it. The alternative was to carry the clause and have the
+merged machine run an action the second machine never ran on entry, which is the kind of hidden side
+effect Q14 exists to keep out; the card chose the drop, and this is the note that it was a choice
+rather than a discovery. A test pins both readings (`tests/merge_test.cpp`,
+`DropsTheSecondMachinesInitialEntryClauseAndWarns`,
+`DoesNotDropTheSecondEntryClauseWhenTheTwoInitialsAreTheSameState`).

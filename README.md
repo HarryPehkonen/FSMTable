@@ -11,9 +11,10 @@ a `constexpr` table that runs.
 
 * **The text is the source.** The library reads a machine from text and writes one back out;
   `dump` is canonical, and a parse → dump → parse round trip is stable. `fsmtable-transform` is the
-  direction that keeps a file's own bytes: it renames a name in a `.fsm` and writes the machine back
-  with every comment, blank line and untouched directive exactly where the file wrote it
-  (`TRANSFORM.md`).
+  direction that edits the text itself: `rename` moves a name and writes the machine back with every
+  comment, blank line and untouched directive exactly where the file wrote it, and `merge` composes
+  two machines into one — a union fused on the state names they share, which is a new file rather
+  than a rewritten one (`TRANSFORM.md`).
 * **The generator is the point.** `fsmtable-gen` emits one self-contained C++ header per machine:
   scoped enums for the states and the event kinds, the rows in the format's canonical order, one
   declaration per action, and a factory. Rows are typed `fsmgine::compiled::Transition`, so the
@@ -34,10 +35,12 @@ format and the library API — are frozen text, and the additions sit below that
 frozen test, the corpus and the dump oracle pass unchanged. `REPORT.md` carries the deliveries
 and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not built yet.
 
-The text → text direction is the third tool: `fsmtable-transform` rewrites a machine in its own
-format — `rename` moves a state, a kind name or the machine's own name, and nothing else in the
-file moves with it, comments included. `TRANSFORM.md` is the contract, the exit codes and the
-limits.
+The text → text direction is the third tool: `fsmtable-transform` has two verbs. `rename` moves a
+state, a kind name or the machine's own name, and nothing else in the file moves with it, comments
+included. `merge` composes two machines into one — a union whose shared state names are the seam it
+meets on — and writes a new file with a provenance header naming both parents and the merged
+fingerprint. A composition that would leave a state unreachable is refused with the states named
+rather than written. `TRANSFORM.md` is the contract for both, the exit codes and the limits.
 
 `examples/` holds three complete programs, each with its own tests and its own README: a calculator
 (the generator on arithmetic), a connection lifecycle with timeouts (the generator on time), and
@@ -52,6 +55,7 @@ limits.
     ./build/fsmtable-gen my.fsm -o my.hpp      # or write the header to stdout
     ./build/fsmtable-gen my.fsm --target deno -o my.ts   # the same machine, as TypeScript
     ./build/fsmtable-transform rename my.fsm state:Idle=Waiting   # a name moves; comments stay
+    ./build/fsmtable-transform merge login.fsm session.fsm -o session_full.fsm   # two machines, one
     ./build/calculator                         # the first worked example: a line in, an answer out
     ./build/protocol                           # the second: a connection lifecycle, script-driven
     ./build/fsmtable-inspect my.fsm            # the library without the generator
@@ -106,8 +110,9 @@ number and a message.
 
     SPEC.md          the specification: the frozen rules and API, and the stages to build
     GENERATOR.md     the tool, the emitted artifact, the exit codes, the limits
-    TRANSFORM.md     `fsmtable-transform` — a rename applied to the text: what moves, what
-                     cannot, and why it is not a `dump`
+    TRANSFORM.md     `fsmtable-transform` — the text → text direction: a rename applied to the
+                     text (what moves, what cannot, why it is not a `dump`) and the merge that
+                     composes two machines into one
     NAMED_KINDS.md   `kind <name> = <n>` — names for event kinds, so rows read `--open-->`
     ENTRY_EXIT.md    `state <name> entry ... exit ...` — entry and exit actions per state
     QUESTIONS.md     every place the spec left a choice, and the reading taken

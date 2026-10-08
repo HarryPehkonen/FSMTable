@@ -225,7 +225,9 @@ the mode honest.
 
   Two artifacts with the same fingerprint are the same machine. The fingerprint is over the
   *named canonical* form, so renaming a kind moves it — the same rule the header's fingerprint
-  follows.
+  follows. `fsmtable-transform merge` writes the same value into the provenance header of the
+  machine it composes ([TRANSFORM.md](TRANSFORM.md)), so a merged file and an artifact generated
+  from it can be compared without diffing text: same algorithm, same canonical form.
 * **A drift probe is the anti-drift tooth.** Nothing regenerates a committed file by accident,
   so nothing notices when the `.fsm` and the artifact come apart — the probe does. It
   regenerates to a temporary file and diffs the two, and it runs only when the generator is

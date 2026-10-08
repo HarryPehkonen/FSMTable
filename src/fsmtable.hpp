@@ -168,4 +168,47 @@ bool parse_rename_spec(std::string_view spec, Rename& rename, std::string& messa
 std::optional<std::string> rename(std::string_view text, const std::vector<Rename>& renames,
                                   Error& error);
 
+// The merge transform (TRANSFORM.md, 2026-10-08, tier 2b): two machines composed into one, in the
+// same text -> text direction `rename` opened.
+//
+// A merge is a UNION, and the composition policy is name fusion rather than a prefix on everything:
+//
+//   * A state name the two machines both use is ONE state. That shared name is the seam, and it is
+//     the whole point of composing: the first machine's `Done` is the second machine's `Initial`.
+//     Nothing here inspects what each machine meant by the name — you fuse because you mean it.
+//   * A kind number one machine names and the other names differently is a refusal, and so is one
+//     kind NAME standing for two numbers: either way the union would have two declarations for one
+//     thing, which the format's one-name-per-number rule forbids. The message names both
+//     declarations. This is what `rename` is for.
+//   * A (from, kind) pair both machines give a row of the SAME guardedness is a refusal: the union
+//     would hold two rows where SPEC.md rule 9 allows one guarded row and one unguarded row. Two
+//     rows of opposite guardedness — a refinement from one machine and a fallback from the other —
+//     are exactly the pair the format has room for, and they merge.
+//   * The merged machine takes the FIRST machine's name and `initial`. The second machine's initial
+//     becomes an ordinary state; its former initial-entry clause is dropped, and a warning naming
+//     the action is reported through `MergeResult::warnings` — creation is not entering
+//     (ENTRY_EXIT.md), and a merged machine is created. When both machines begin in the same state,
+//     that state IS the merged initial and nothing is dropped.
+//   * Entry and exit clauses fuse per state and per clause: the first machine's clause wins where
+//     both declare one. Everything else survives in first-appearance order.
+//
+// The output is a NEW machine, so canonical text is the correct answer here and `dump` is the
+// writer: there are no comments to preserve. `text` is version 1, and `fingerprint` is FNV-1a 64
+// over exactly that text — the value `fsmtable-gen` stamps into a header it generates from the same
+// machine.
+//
+// Refusals carry `line == 0` and a message that names what disagreed: a merge is not tied to a line
+// of either input, and neither the parse tree nor `Machine` keeps one (QUESTIONS.md Q17). Two
+// inputs that do not parse are reported with `parse`'s own line and message. And the result is
+// checked before it is returned: the text is parsed again, and a merged machine with a state no row
+// can reach from the initial is refused rather than handed over, because the point of a composition
+// is that the second machine's states are reachable through the first (QUESTIONS.md Q18).
+struct MergeResult {
+    std::string text;                  // the merged machine, canonical version 1 text
+    std::uint64_t fingerprint = 0;     // FNV-1a 64 over `text`
+    std::vector<std::string> warnings; // clauses the merge dropped to stay well-defined
+};
+
+std::optional<MergeResult> merge(std::string_view first, std::string_view second, Error& error);
+
 } // namespace fsmtable

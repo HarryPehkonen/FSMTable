@@ -1,0 +1,5 @@
+version 1
+machine Watch
+initial On
+state On entry on_entry_watch
+transition On --3--> Off
