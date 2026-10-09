@@ -1,0 +1,23 @@
+Cell: name
+Cell: note
+Cell: price
+NEW LINE
+Cell: widget
+Cell: a,b
+Cell: 1.50
+NEW LINE
+Cell: gadget
+Cell: line
+two
+Cell: 2.00
+NEW LINE
+Cell: quoted
+Cell: 
+Cell: x"y
+NEW LINE
+Cell: a"b
+Cell: plain
+NEW LINE
+Cell: 
+Cell: last
+NEW LINE

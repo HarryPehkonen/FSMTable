@@ -46,6 +46,11 @@
 #      the composed walk over that union, the inspector's summary of it, and the two refusals the
 #      example is built around. Its "build your own" recipe is checked the way the calculator's is (1),
 #      and the example's three .fsm files are covered by the tree check (4) like every other one.
+#   9. examples/csv/README.md — its machine walk, re-run and diffed like the inspector's, and its two
+#      recorded runs, compared against the committed input/*.expected files that the csv_session and
+#      the refusal ctest cases already diff the binary against, so the README cannot drift from the
+#      trace a reader would get. Its "build your own" recipe is checked the way the calculator's is (1),
+#      and csv.fsm is covered by the tree check (4) like every other .fsm in examples/.
 #
 # Exit codes: 0 every claim re-derived, 1 one of them did not hold, 2 the command line is wrong.
 set -u
@@ -262,6 +267,40 @@ check_output_block() {
     fi
 }
 
+# $1 document, $2 the marker above its block, $3 the file the block must equal.
+#
+# A quoted output the doc-claims script cannot RE-RUN — the csv example's recorded runs are fed
+# through its binary by the ctest cases, and a piped stdin is not a command this script's output
+# blocks can express — is still a claim: the README quotes a file that exists, and the two can drift
+# while the binary and the file agree. This compares the block against the committed file, which puts
+# the README in the chain the ctest case already completes.
+check_file_block() {
+    doc=$1
+    marker=$2
+    file=$3
+
+    start=$(line_of "$marker" "$doc")
+    if [ -z "$start" ]; then
+        fail "'$marker' is no longer in $doc, so its block was not checked"
+        return
+    fi
+
+    block_after "$start" "$doc" > "$work/block.txt"
+    # A marker with no block under it compares two empty files and passes: the same vacuity the
+    # output blocks and the tree check guard against.
+    if [ ! -s "$work/block.txt" ]; then
+        fail "the block under '$marker' in $doc is empty, so nothing was checked"
+        return
+    fi
+
+    if diff -u "$file" "$work/block.txt" > "$work/diff.txt"; then
+        note "the block under '$marker' in $doc is $file"
+    else
+        fail "the block under '$marker' in $doc is not $file:"
+        sed 's/^/      /' "$work/diff.txt"
+    fi
+}
+
 # $1 document, $2 the lowest number of .fsm files that check must look at.
 check_tree() {
     doc=$1
@@ -370,7 +409,7 @@ check_recipe "$root/examples/protocol/README.md" 'A worked adaptation' \
     "$root/examples/protocol/protocol.fsm" 'protocol recipe'
 check_composed_names "$root/examples/protocol/README.md" "$recipe_hpp"
 check_output_block "$root/examples/inspector/README.md" 'Real output, on this repository'
-# The floor is a vacuity guard, not a pin on the number: today the tree check finds 8 files
+# The floor is a vacuity guard, not a pin on the number: today the tree check finds 9 files
 check_tree "$root/examples/inspector/README.md" 4
 check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonical form back needs' \
     "$root/examples/protocol/protocol.fsm"
@@ -391,6 +430,21 @@ check_output_block "$root/examples/vending/README.md" '## The two refusals'
 check_recipe "$root/examples/vending/README.md" '### Worked adaptation: a restock' \
     "$root/examples/vending/vending.fsm" 'vending recipe'
 # The front page's own machine: the block that teaches the syntax must be one the format accepts.
+# The csv example (examples/csv/README.md) — the actions-tied-to-rows example, and the first one
+# whose README quotes a recorded RUN rather than a tool's stdout: its machine walk is an output block
+# like the inspector's, its two recorded runs are compared against the committed files the ctest
+# cases already diff the binary against, and its "build your own" ends with a recipe like the
+# calculator's and the protocol's.
+check_output_block "$root/examples/csv/README.md" '## The machine, walked without the driver'
+check_file_block "$root/examples/csv/README.md" \
+    '`input/session.expected`, compared line for line by the `csv_session` ctest' \
+    "$root/examples/csv/input/session.expected"
+check_file_block "$root/examples/csv/README.md" \
+    '`input/malformed.expected`, the message and all' \
+    "$root/examples/csv/input/malformed.expected"
+check_recipe "$root/examples/csv/README.md" \
+    '### Worked adaptation: a lone carriage return ends a record' \
+    "$root/examples/csv/csv.fsm" 'csv recipe'
 check_indented_machine "$root/README.md" '## The format, in one screen'
 
 if [ "$failed" -eq 0 ]; then

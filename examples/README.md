@@ -1,6 +1,6 @@
 # Examples
 
-Four worked examples. Three are complete programs you can build, run and read; the fourth is three
+Five worked examples. Four are complete programs you can build, run and read; the fifth is three
 `.fsm` files and the tools this repository already ships. Each one is here to show a different face
 of the format:
 
@@ -8,13 +8,14 @@ of the format:
 | --- | --- | --- |
 | [`calculator/`](calculator/README.md) | a line-oriented calculator: an expression in, an answer or an error out | the generator on **arithmetic** — refined rows as an operator-precedence table, a guard on an event's value, a self-transition, and the split between what the table decides and what the code around it holds |
 | [`protocol/`](protocol/README.md) | a connection lifecycle with retransmission and a timeout | the generator on **time** — a clock the format cannot hold, a refinement pair, a sink state, exit/action/entry composition, and the four limits a real design runs into |
+| [`csv/`](csv/README.md) | an RFC 4180 reader: a byte stream in, a `Cell:` line per cell and a `NEW LINE` per record out | the generator on **actions** — fifteen rows sharing three actions, a value-carrying kind whose value *is* the data, a state whose whole job is to be the instant between two others, and one row deliberately missing |
 | [`inspector/`](inspector/README.md) | `fsmtable-inspect`: summarize a `.fsm`, report unreachable states, sinks and partially covered pairs, walk the table over a flat event list (`--trace`), draw it as a Mermaid state diagram (`--graph`), write the canonical form back (`--canonical`) | the **library without the generator** — `parse`, `dump` and the analyses, wrapped in a tool with an exit code you could put in a hook |
 | [`vending/`](vending/README.md) | a vending machine as two half-machines — the payment and the stock — composed into one by `fsmtable-transform merge` | the **text → text direction** — a seam that is nothing but a shared state name, a provenance header as a committed artifact, and the difference between a machine's name and its identity |
 
 ## Each one stands alone
 
-There is no shared example library. `calculator.cpp`, `protocol.cpp` and `inspector.cpp` each carry
-their own small driver, and the two that build a machine each have their own header. That is a
+There is no shared example library. `calculator.cpp`, `protocol.cpp`, `csv.cpp` and `inspector.cpp`
+each carry their own small driver, and the three that build a machine each have their own header. That is a
 deliberate trade: a few hundred duplicated lines in exchange for being able to read one directory
 and understand all of it, without following a third file that exists only to be shared. `vending/`
 takes the same trade to its limit and has no driver at all: its three `.fsm` files are the whole
@@ -57,7 +58,8 @@ Machines that are more fun than a calculator, roughly in order of how much they 
   most backend work actually has, and it is a good way to find out how much of it is a table and how
   much of it is a database.
 - **A lexer.** Character classes are event kinds, one state per lexical context, and a value can
-  carry the character that did not fit. Then feed the tokens to a second machine that is the parser:
+  carry the character that did not fit. [`csv/`](csv/README.md) is this shape at its smallest: four
+  character classes, four states, and a value that carries the byte. Then feed the tokens to a second machine that is the parser:
   two generated tables, one driver, and the classic FSM job done the way the textbooks describe it.
 - **A retry or backoff supervisor.** The driver counts attempts and decides when to give up; the
   machine decides what is legal in between. `protocol/` is already most of the way there.

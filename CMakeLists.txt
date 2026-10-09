@@ -120,6 +120,35 @@ add_executable(protocol examples/protocol/main.cpp)
 target_link_libraries(protocol PRIVATE protocol_core)
 target_compile_options(protocol PRIVATE ${FSMTABLE_WARNINGS})
 
+# --- the csv example: a byte-at-a-time reader whose rows carry the actions. It is the first
+# consumer whose event value is the DATA rather than a threshold, and the machine's asymmetry — a
+# comma and a line end are data inside a quoted field and delimiters outside it — is the file's
+# whole argument. Semantics: examples/csv/README.md.
+set(FSMTABLE_CSV_DIR "${CMAKE_CURRENT_SOURCE_DIR}/examples/csv")
+
+add_custom_command(
+    OUTPUT "${FSMTABLE_GENERATED_DIR}/fsm_csv.hpp"
+    COMMAND fsmtable_gen examples/csv/csv.fsm
+            -o "${FSMTABLE_GENERATED_DIR}/fsm_csv.hpp"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    DEPENDS fsmtable_gen "${FSMTABLE_CSV_DIR}/csv.fsm"
+    COMMENT "fsmtable-gen: csv.fsm -> fsm_csv.hpp"
+    VERBATIM)
+add_custom_target(fsmtable_csv_header
+    DEPENDS "${FSMTABLE_GENERATED_DIR}/fsm_csv.hpp")
+
+add_library(csv_core STATIC examples/csv/csv.cpp)
+add_dependencies(csv_core fsmtable_csv_header)
+target_link_libraries(csv_core PUBLIC fsmTable)
+target_compile_options(csv_core PRIVATE ${FSMTABLE_WARNINGS})
+target_include_directories(csv_core PUBLIC
+    "${FSMTABLE_CSV_DIR}" "${FSMTABLE_GENERATED_DIR}")
+target_include_directories(csv_core SYSTEM PUBLIC "${FSMTABLE_FSMGINE_DIR}/include")
+
+add_executable(csv examples/csv/main.cpp)
+target_link_libraries(csv PRIVATE csv_core)
+target_compile_options(csv PRIVATE ${FSMTABLE_WARNINGS})
+
 # --- the inspector: the library half of the format with no generator in sight. It reads a .fsm at
 # RUN time, so there is nothing to generate and nothing to link but the library itself.
 add_executable(fsmtable-inspect examples/inspector/inspector.cpp)
@@ -276,6 +305,30 @@ if(FSMTABLE_BUILD_TESTS)
     # answered, and this script contains two of those on purpose.
     add_test(NAME protocol_session
         COMMAND sh -c "\"$<TARGET_FILE:protocol>\" < \"${FSMTABLE_PROTOCOL_DIR}/input/session.txt\" | diff -u \"${FSMTABLE_PROTOCOL_DIR}/input/session.expected\" -")
+
+    add_executable(csv_tests examples/csv/csv_test.cpp)
+    target_link_libraries(csv_tests PRIVATE csv_core GTest::gtest_main)
+    target_compile_options(csv_tests PRIVATE ${FSMTABLE_WARNINGS})
+    add_test(NAME csv_tests COMMAND csv_tests)
+
+    # The end-to-end session for the csv example: a nasty CSV — a quoted comma, a quoted line end,
+    # the "" escape, an empty field, a tolerated quote and a quoted empty field — read by the built
+    # binary and diffed against the recorded trace byte for byte. A temporary file rather than a
+    # pipe, because the output contains a line that is a cell's own newline: the exit code is pinned
+    # beside the bytes here, which a pipe would have left to diff's verdict instead.
+    add_test(NAME csv_session
+        COMMAND sh -c "work=$(mktemp -d); trap 'rm -rf $work' EXIT; \"$<TARGET_FILE:csv>\" < \"${FSMTABLE_CSV_DIR}/input/session.csv\" > $work/out; code=$?; diff -u \"${FSMTABLE_CSV_DIR}/input/session.expected\" $work/out && [ $code -eq 0 ]")
+
+    # The refusal the example is built around: a byte after a closing quote has no row, so the run
+    # stops at that byte and exits 1. Message and code are checked together, in the shell, for the
+    # reason given at the merge cases below.
+    add_test(NAME csv_refuses_a_byte_after_a_closing_quote
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:csv>\" < \"${FSMTABLE_CSV_DIR}/input/malformed.csv\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"! byte 12: QuoteSeen has no row for a data byte\" && [ $code -eq 1 ]")
+
+    # The same machine without the driver: the inspector walks the rows for the classified events of
+    # `"a,b",c` and names the action each row carries, which is what ties an action to a row.
+    add_test(NAME csv_trace_names_the_actions
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CSV_DIR}/csv.fsm\" quote data=97 comma data=98 quote comma data=99 newline); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"Quoted --comma--> Quoted  (action append)\" && printf '%s\\n' \"$out\" | grep -qF -e \"QuoteSeen --comma--> FieldStart  (action end_cell)\" && printf '%s\\n' \"$out\" | grep -qF -e \"Unquoted --newline--> FieldStart  (action end_record)\" && [ $code -eq 0 ]")
 
     # The inspector, as ctest cases. Each pins the exit code as well as the output, because the
     # exit code is the part a script or a hook would use: 0 nothing to report, 1 the file could not

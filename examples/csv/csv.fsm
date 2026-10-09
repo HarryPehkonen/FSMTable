@@ -1,0 +1,61 @@
+# An RFC 4180 reader, as a table.
+#
+# Four states and four kinds read a byte stream one byte at a time. `FieldStart` is where a
+# field begins, `Unquoted` is inside a bare field, `Quoted` is inside a quoted one, and
+# `QuoteSeen` is the instant after a quote that may be closing a field or escaping another.
+# The driver (csv.cpp) classifies each byte into one of the four kinds and carries the byte
+# itself on the event — that is what lets one `append` action serve every row that collects a
+# character, the way the calculator carries an operand.
+#
+# The asymmetry is the machine's whole argument. Inside `Quoted`, a comma and a line end are
+# DATA — the reason quoting exists at all — and the same two byte kinds end things in every
+# other state. One table, and the difference between "a,b" and "a,b" falls out of which state
+# the byte arrived in.
+#
+# The one row MISSING on purpose is `QuoteSeen --data-->`. A byte after a closing quote is not
+# RFC 4180, and the format's refusal — no row — IS the error handling: process() returns false,
+# the driver reports the byte and stops, and nothing invents a transition to absorb it
+# (README.md, "The refusal").
+#
+# Two rows do more than their name says, and both are the format's boundary rather than a
+# taste. `end_record` closes the pending field AND the record, because a line end does two
+# things and a row has one action slot (QUESTIONS.md Q24). Nothing here is guarded: no row
+# compares a value, so the four kinds and the four states are the whole of what the machine
+# can say.
+version 1
+machine Csv
+initial FieldStart
+
+kind data = 1
+kind comma = 2
+kind quote = 3
+kind newline = 4
+
+# FieldStart: a field is about to begin. A quote opens one; a comma ends an empty one in place;
+# a line end ends an empty last field and the record; anything else is the field's first byte.
+transition FieldStart --data--> Unquoted action append
+transition FieldStart --quote--> Quoted
+transition FieldStart --comma--> FieldStart action end_cell
+transition FieldStart --newline--> FieldStart action end_record
+
+# Unquoted: a bare field. A quote here is malformed RFC 4180 and is tolerated and appended
+# rather than refused, which is a reading this repository took rather than a rule the format
+# gave (QUESTIONS.md Q22). A comma or a line end ends the field.
+transition Unquoted --data--> Unquoted action append
+transition Unquoted --quote--> Unquoted action append
+transition Unquoted --comma--> FieldStart action end_cell
+transition Unquoted --newline--> FieldStart action end_record
+
+# Quoted: a quoted field. Every byte kind is data here — the comma and the line end included,
+# which is what the opening quote bought. A quote may be the field's end or the first half of
+# an escaped quote, so it is `QuoteSeen`'s to decide.
+transition Quoted --data--> Quoted action append
+transition Quoted --comma--> Quoted action append
+transition Quoted --quote--> QuoteSeen
+transition Quoted --newline--> Quoted action append
+
+# QuoteSeen: a quote was just read. Another quote is the escape `""`, and it is appended as one
+# quote; a comma or a line end closes the field. A data byte has no row here at all.
+transition QuoteSeen --quote--> Quoted action append
+transition QuoteSeen --comma--> FieldStart action end_cell
+transition QuoteSeen --newline--> FieldStart action end_record

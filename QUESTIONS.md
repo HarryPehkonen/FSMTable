@@ -370,3 +370,104 @@ effect Q14 exists to keep out; the card chose the drop, and this is the note tha
 rather than a discovery. A test pins both readings (`tests/merge_test.cpp`,
 `DropsTheSecondMachinesInitialEntryClauseAndWarns`,
 `DoesNotDropTheSecondEntryClauseWhenTheTwoInitialsAreTheSameState`).
+
+## Q21 — Is a lone carriage return a line end, or a byte of data?
+
+RFC 4180 ends a record with CRLF, and the machine has one `newline` kind, so something has to decide
+what those two bytes are — and what a `\r` with no `\n` after it is. The design brief named the
+collapse and left the lone byte open.
+
+**Reading taken:** CRLF is one `newline` event, consumed as two bytes by the driver; a `\r` that no `\n`
+follows is **data**, appended to the field like any other byte and printed as itself. The rule is the
+smallest one that covers the format: only the exact pair RFC 4180 calls a terminator is a terminator, and
+every other byte is a byte.
+
+**The alternative:** a lone `\r` also ends a record, which is the older Mac line ending and what some
+lenient readers do. It is a defensible convenience, and it is a second way for a record to end that the
+format being implemented does not have — a file with an embedded `\r` in an unquoted field would split
+into records this reader was asked to read as one. The change is cheap in either direction, which is the
+reason it is written down: `examples/csv/README.md`'s worked adaptation is exactly the four rows and one
+`kind cr = 5` that adopt it, and `tools/check-doc-claims.sh` re-derives those rows' counts on every gate
+run. A test pins the reading taken (`examples/csv/csv_test.cpp`, `ALoneCarriageReturnIsData`).
+
+## Q22 — Is a quote inside an unquoted field refused, or absorbed?
+
+`a"b` is not RFC 4180: a quote may open a quoted field or appear escaped inside one, and a bare field
+may not contain one. The format is total — every byte string parses or is an error with a position — so
+the reader has to say which this is.
+
+**Reading taken:** absorbed. `Unquoted --quote--> Unquoted action append` appends the byte and stays in
+the field, so `a"b` reads as the single cell `a"b`. This is the one place the CSV machine is lenient
+rather than total, and it is taken deliberately: the byte is unambiguous in context — it cannot be
+opening a quoted field, because the field is already unquoted, and it cannot be escaping anything,
+because nothing is quoted — so refusing it would reject files whose meaning no reader disputes.
+
+**The alternative:** refuse it, either by leaving `Unquoted --quote-->` out (the same treatment
+`QuoteSeen --data-->` gets) or by routing it to a state with no exit. That is the stricter reading of the
+format, and the cost is that a stray quote anywhere in a bare field — a real thing in hand-written and
+exported files — loses the whole record. The shape of the trade is worth noticing: the tolerant reading
+is one row and the strict one is an absence, so the difference between the two is a row rather than
+machinery. `csv_test.cpp` (`AQuoteInsideAnUnquotedFieldIsAppended`) pins the reading taken.
+
+## Q23 — What does the machine do with a data byte after a closing quote?
+
+`"ab"x` is malformed RFC 4180: the closing quote ended the field, and `x` is neither a delimiter nor a
+line end. The design brief said the machine should have no row for it and the driver should report it,
+and left the consequences of that absence unstated.
+
+**Reading taken:** no row, and the absence IS the error handling. `QuoteSeen --data-->` is left out on
+purpose; the back end's `process` returns false, the state does not change, and the driver reports the
+byte's position and stops. Nothing is emitted for the record, because a record that never ended has no
+cells to print, and the run exits 1 — the part a script uses.
+
+**The alternative:** a `QuoteSeen --data--> QuoteSeen` row that swallows the byte, which is what lenient
+readers do and what makes `"ab"x` read as `abx`. It is rejected here because the format this library
+enforces is total — "any byte string is either a valid machine or an error with a line number" (SPEC.md
+section 1) — and a row that absorbed malformed input would make that claim false without anything
+failing. Recording the position rather than the row is what keeps the refusal useful: the machine can
+only say no, and saying *where* is the driver's job (the same division as Q10). The README shows the run;
+`csv_test.cpp` (`DataAfterAClosingQuoteIsRefused`, `ARefusedByteLeavesTheMachineWhereItWas`) pins that
+the machine was left where it was.
+
+## Q24 — A row has one action slot; what does a line end's action do?
+
+The design brief wrote the newline rows as `action end_cell, end_record`, because a line end ends the
+last field and the record, and those are two things. The frozen format gives a row exactly one optional
+`action` clause (SPEC.md section 2), and the generator rejects the second name with a line number
+(`action end_cell, end_record` is `malformed action name 'end_cell,'`), so the brief's row cannot be
+written as it stands.
+
+**Reading taken:** the line end's single action, `end_record`, closes the pending field **and** the
+record — it runs `end_cell`'s work, then prints `NEW LINE`. The output is identical to the two-action
+form; what cannot be expressed is the decomposition into two named actions, and the format is right to
+refuse to guess at it, because a second action slot is a language change and this is one example.
+
+**The alternative:** a second action slot on a row (a v2 item), or a chain of states that composes the
+two through an `entry` clause — `Unquoted --newline--> RecordEnd action end_cell` with `RecordEnd`'s
+entry clause running `end_record`. The state form is legal in the frozen format and would name both
+actions, at the price of a fifth state that exists only to host one clause, and of the question of what
+leaves it (nothing does: a `RecordEnd` would be a dead name). The reading taken is the smaller machine,
+and the pair of names is preserved where it matters — `end_cell` for the comma's three rows, `end_record`
+for the line end's three — so the "many rows, few actions" shape survives the format's one slot intact.
+
+## Q25 — What ends a record at end of input, when the table has no such event?
+
+A file whose last record has no trailing line end, and a quoted field whose closing quote never arrived,
+are both facts about the byte stream as a whole. The machine has four byte kinds and no `eof`, so neither
+case reaches a row and both are the driver's to decide.
+
+**Reading taken:** two rules, and they differ. A record with no trailing line end is **closed and
+reported** — the driver runs `end_record`, so `a,b` with no final newline yields the same `Cell:` and
+`NEW LINE` lines as `a,b\n`. A quoted field left open at end of input is **refused**: `end of input
+inside a quoted field`, exit 1, nothing emitted, because the closing quote the format requires never came
+and the driver can see the machine is still in `Quoted`. A quoted field whose closing quote *did* arrive
+(the state `QuoteSeen`) is whole, and is closed like any other last record.
+
+**The alternative:** treat end of input as no event at all and emit nothing for a record left open, which
+silently drops the last line of every file that lacks a trailing newline — the commonest CSV in the
+world. Or refuse both cases, which would make an unterminated *unquoted* last field an error the format
+never called one. The division taken is the same one the protocol example draws around its clock
+(`examples/protocol/README.md`): the table decides legality byte by byte, and everything that is true of
+the stream rather than of a byte is the driver's, named in one place and tested (`csv_test.cpp`,
+`TheLastRecordNeedsNoTrailingLineEnd`, `AQuotedFieldAtEndOfInputIsClosed`,
+`EndOfInputInsideAQuotedFieldIsRefused`).
