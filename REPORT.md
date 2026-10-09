@@ -487,3 +487,86 @@ Five things this delivery measured rather than assumed:
     The tests stage's own line, from .ci-logs/tests.log on that run:
 
     100% tests passed, 0 tests failed out of 75
+
+## Appendix — the edge example: the on-ramp
+
+`examples/edge/` is the sixth example and the smallest machine in the tree: three states, six rows,
+two kinds, no guards, no values, no entry/exit, no merge and no committed artifact. It exists because
+every other example teaches a hard idea on top of the format — a value that is a threshold
+(`calculator/`), a value that *is* the input (`csv/`), a clock the format cannot hold and a sink that
+is deliberate (`protocol/`), the union of two machines (`vending/`) — and there was nothing to read
+first. This one teaches the four nouns and nothing else, and `examples/README.md` now lists it first,
+marked **start here**.
+
+Its one observation is that the same kind means three different things in three states:
+
+    Start   --zero--> SawZero    absorbed   the first bit: nothing -> 0 is not a change
+    SawZero --zero--> SawZero    absorbed   the same bit twice: nothing changed
+    SawOne  --zero--> SawZero    reported   a 1 followed by a 0: the row prints `1 --> 0`
+
+    what                                        document
+    the machine                                 examples/edge/edge.fsm (3 states, 6 rows, 2 kinds)
+    the driver: classification, the refusal     examples/edge/edge.cpp
+    the API                                     examples/edge/edge.hpp
+    the shell                                   examples/edge/main.cpp
+    the worked example                          examples/edge/README.md
+    the two recorded runs                       examples/edge/input/session.{txt,expected},
+                                                examples/edge/input/stray.{txt,expected}
+    the four cases that hold it                 CMakeLists.txt — 4 ctest cases (79 in the suite)
+    the checker that holds its blocks           tools/check-doc-claims.sh (item 10: one output
+                                                block, two file blocks, no counted recipe)
+    the index it now leads                      examples/README.md, first row, "start here"
+    the readings                                QUESTIONS.md Q26 the Start state, Q27 the byte that
+                                                is not a bit
+
+Four things this delivery measured rather than assumed:
+
+* **The machine is total and the refusal is the driver's.** Every state in `edge.fsm` has a row for
+  `zero` and a row for `one`, so `process()` cannot return false for a byte the driver classified —
+  the driver's own comparison is the whole of the refusal, and `edge.cpp` says so where the return
+  value is not read. `input/stray.txt` (`01x`) prints the rising edge it really saw and then
+  `! byte 3: 'x' is not a bit`, exit 1.
+* **A hex table written as `const char*` is a new tidy finding.** `digits[byte >> 4]` is
+  `cppcoreguidelines-pro-bounds-pointer-arithmetic`, the same check the repository records for
+  `argv[i]` in `.ci/tidy-baseline.txt`. That baseline's own note says everything not in it was fixed
+  in the code rather than accepted, so the fix is a `std::string` (indexing a string is a call): the
+  full tier's `tidy` stage failed with exactly one new finding before it and passes after (0 new,
+  21 total).
+* **The tree check's count moved from 9 to 10.** The number lives in a comment in
+  `tools/check-doc-claims.sh`; the floor stays at 4, which is the vacuity guard rather than a pin.
+* **The input is a bit stream, so the recorded session has no trailing newline.** A newline is a byte
+  the driver does not read as a bit, and the README quotes only the *output* files as blocks: a block
+  read by `check_file_block` always ends in a newline, so a file without one cannot equal it. The
+  input appears in prose, and Q27 records the reading.
+
+Six sabotages, each caught, each undone:
+
+* deleting `transition SawZero --one--> SawOne action rising` from `edge.fsm` fails `edge_tests` —
+  the generated header loses the row, the action never runs, and the rising case's line is gone;
+* making `Reader::rising()` print nothing fails `edge_tests`;
+* flipping `main.cpp`'s refusal exit to 0 fails the exit-code half of
+  `edge_refuses_a_byte_that_is_not_a_bit`;
+* editing one line of the README's recorded run fails `check_file_block`;
+* deleting the trace block's `$ ` line fails `check_output_block` with "runs no command, so nothing
+  was checked";
+* adding a row for an `Orphan` state that nothing leads to makes the inspector exit 1 and fails the
+  tree check.
+
+After every edit the tree was restored and re-run green (`ctest -R '^edge_'` exit 0,
+`check-doc-claims.sh` exit 0, `git status --porcelain` empty).
+
+One thing this card did **not** do, recorded rather than swept: `README.md`'s examples paragraph and
+Documentation list still say "three complete programs" and name four consumers, from before `csv/`
+shipped — `edge/` is now the second example missing from them. Correcting those two places means
+naming both, which is a documentation card's job rather than this one's; the index this card owns,
+`examples/README.md`, is correct and puts `edge/` first.
+
+    Gate verdict, verbatim, from the run on commit 6701f1b (this section was added after it, and the
+    full tier runs again on the push):
+
+    kit-ci: gate.toml — tier 'full', 12 stage(s)
+    GATE PASSED — 12 passed, 0 failed, 0 skipped
+
+    The tests stage's own line, from .ci-logs/tests.log on that run:
+
+    100% tests passed, 0 tests failed out of 79
