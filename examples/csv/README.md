@@ -62,7 +62,7 @@ The fifteen rows fall into four groups, and the grouping is the tie this example
 
 | rows | action | what it does |
 | --- | --- | --- |
-| `FieldStart --data-->`, and every `--data-->`, `--quote-->` or `--newline-->` row that stays in `Quoted` or `Unquoted` — seven rows | `append` | pushes the byte the event carried onto the field being assembled |
+| `FieldStart --data-->`, the three inside `Quoted` (`--data-->`, `--comma-->`, `--newline-->`), the two inside `Unquoted` (`--data-->`, `--quote-->`), and `QuoteSeen --quote-->` — seven rows | `append` | pushes the byte the event carried onto the field being assembled |
 | `FieldStart`, `Unquoted` and `QuoteSeen` on `--comma-->` — three rows | `end_cell` | closes the field and prints `Cell: <the bytes>` |
 | the same three states on `--newline-->` — three rows | `end_record` | closes the field **and** the record, and prints `NEW LINE` |
 | `FieldStart --quote-->` and `Quoted --quote-->` — two rows | *(none)* | a move, and a move is all they are |
@@ -91,10 +91,13 @@ examples/csv/csv.fsm: Csv — trace of 8 event(s) from FieldStart
   Unquoted --newline--> FieldStart  (action end_record)
 ```
 
-Read the two `Quoted --comma--> Quoted` lines against the `QuoteSeen --comma--> FieldStart` one: the
-same byte kind, three rows, and the state is the whole difference between "the comma is data" and
-"the comma ends the field". A trace is not a driver — no bytes are classified, no actions run — which
-is exactly why it is the honest way to show a row: it shows the row, and nothing else.
+Read the `Quoted --comma--> Quoted` line against the `QuoteSeen --comma--> FieldStart` one: the same
+byte kind, two different rows, and the state is the whole difference between "the comma is data" and
+"the comma ends the field". (The machine has a third `--comma-->` row, `FieldStart --comma-->`, which
+this walk never visits — a comma where no field has begun yet.)
+
+A trace is not a driver — no bytes are classified, no actions run — which is exactly why it is the
+honest way to show a row: it shows the row, and nothing else.
 
 ## The recorded run, line for line
 
@@ -263,9 +266,9 @@ a byte after a closing quote is nothing this reader understands.
 3. **Write the rows as sentences**, one per legal byte kind per state: *in `<state>`, `<kind>` goes to
    `<state>` and runs `<action>`.* Where a byte is not legal — a data byte after a closing quote —
    write nothing, and let the driver report it. The absence is the error handling.
-4. **Name the actions by what they do to the driver's data**, not by where they are: `append`,
-   `end_cell` and `end_record` are shared by rows in three different states, which is what a small
-   action vocabulary buys.
+4. **Name the actions by what they do to the driver's data**, not by where they are: `append` is
+   shared by rows in all four states, and `end_cell` and `end_record` by rows in three states apiece,
+   which is what a small action vocabulary buys.
 5. **Write the driver**: what a byte is, anything the format cannot see (a two-byte line ending, the
    end of the stream), and what happens when `process` returns false.
 6. **Wire it into CMake** the way `CMakeLists.txt` does for this example: one `add_custom_command`
