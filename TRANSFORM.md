@@ -199,6 +199,10 @@ Read both for what a merge is *not*: the two fixtures carry comments and neither
 took the first parent's name. The block is compared line for line on every gate run, the same way
 the block above it is.
 
+A worked example of the whole verb — two half-machines whose one shared state name is the seam, the
+union committed with the header it was written with, and the composed walk over it — is
+[examples/vending/README.md](examples/vending/README.md).
+
 ## The rename's rules
 
 * **The parse tree is the judge.** The file is parsed first, and a file that does not parse is

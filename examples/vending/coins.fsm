@@ -1,0 +1,22 @@
+# The payment half of a vending machine: money goes in, and this machine says when there is enough
+# of it. It knows nothing about stock — that is dispenser.fsm, and the two are composed into
+# vending.fsm by `fsmtable-transform merge` (README.md).
+#
+# `credit` carries the RUNNING TOTAL, not the coin that was just dropped in: a row has one `when`
+# slot and the format cannot add, so the driver keeps the sum and hands the machine the number the
+# guard compares. The price is 150 (README.md).
+version 1
+machine Coins
+initial Waiting
+
+kind credit = 1
+kind refund = 2
+
+# A credit below the price is refused — the machine waits for more money. This row and the one
+# after it are a refinement pair (SPEC.md rule 9): the guarded row is tried first, and the
+# unguarded row behind it is the fallback.
+transition Waiting --credit--> Waiting when lt 150
+transition Waiting --credit--> Credited
+
+# The only way back out of Credited, and a person's decision rather than the table's.
+transition Credited --refund--> Waiting

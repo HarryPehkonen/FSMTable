@@ -45,7 +45,9 @@ state, a kind name or the machine's own name, and nothing else in the file moves
 included. `merge` composes two machines into one — a union whose shared state names are the seam it
 meets on — and writes a new file with a provenance header naming both parents and the merged
 fingerprint. A composition that would leave a state unreachable is refused with the states named
-rather than written. `TRANSFORM.md` is the contract for both, the exit codes and the limits.
+rather than written. `TRANSFORM.md` is the contract for both, the exit codes and the limits, and
+`examples/vending/README.md` works the merge through end to end: two half-machines whose one shared
+state name is the seam between them, and the union the tool writes for them.
 
 The generator and the inspector shipped to the same bar: `--target deno` emits the same machine as a
 TypeScript module the gate type-checks and tests (`GENERATOR.md`), and `fsmtable-inspect` reads a
@@ -54,8 +56,10 @@ machine back — a summary, or `--canonical`, `--trace`, `--graph` — under its
 
 `examples/` holds three complete programs, each with its own tests and its own README: a calculator
 (the generator on arithmetic), a connection lifecycle with timeouts (the generator on time), and
-`fsmtable-inspect`, a tool that reads `.fsm` files (the library with no generator at all).
-`examples/README.md` is the index, and it ends with a list of the machines worth building next.
+`fsmtable-inspect`, a tool that reads `.fsm` files (the library with no generator at all). A fourth
+example, `examples/vending/`, is three `.fsm` files and no code: the payment and stock halves of a
+vending machine, composed into one machine by `merge`. `examples/README.md` is the index, and it ends
+with a list of the machines worth building next.
 
 ## Quick start
 
@@ -143,6 +147,8 @@ additions. Any byte string is either a valid machine or an error with a line num
                      time instead of arithmetic: refinement pairs, a sink, and four limits
     examples/inspector/README.md
                      the library without the generator, and why a sink is not a failure
+    examples/vending/README.md
+                     the merge verb's worked example: two half-machines, one shared state name
 
 ## Layout
 
@@ -151,7 +157,7 @@ additions. Any byte string is either a valid machine or an error with a line num
     transform/       fsmtable-transform: the text → text direction
     tests/           the gtest suites, the corpus, the fixtures, the differential oracle
     corpus/          .fsm files the tests and the fuzzer share
-    examples/        calculator, protocol, inspector — three complete consumers
+    examples/        calculator, protocol, inspector, vending — four complete consumers
     fuzz/            the libFuzzer target
     scripts/         the gate: gate.sh, gate-env.sh, and one script per stage
     gate.toml        the gate's policy — the stages, the two tiers, the failure rules

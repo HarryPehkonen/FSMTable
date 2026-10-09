@@ -440,6 +440,23 @@ if(FSMTABLE_BUILD_TESTS)
     add_test(NAME rename_refuses_the_output_option
         COMMAND sh -c "\"$<TARGET_FILE:fsmtable-transform>\" rename \"${CMAKE_CURRENT_SOURCE_DIR}/corpus/traffic_light.fsm\" state:Red=Stop -o out.fsm > /dev/null 2>&1; [ $? -eq 2 ]")
 
+    # --- the vending example: two machines composed into one, with no generator anywhere in it. The
+    # three .fsm files are the whole example (examples/vending/README.md), so what a gate can pin is
+    # the artifact and the walk: the committed union really is the merge of its two parents, the trace
+    # composes the two halves, a vend before payment is refused rather than invented, and the sink the
+    # README calls deliberate is the one the inspector reports. Each case runs from the SOURCE
+    # directory, because the paths of the two parents are recorded in the merged file's header: a
+    # merge run from anywhere else writes the paths it was given and would not match the committed
+    # bytes. No case here sets PASS_REGULAR_EXPRESSION for the reason given above the merge cases.
+    add_test(NAME vending_union_is_the_two_parents_merged
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && \"$<TARGET_FILE:fsmtable-transform>\" merge examples/vending/coins.fsm examples/vending/dispenser.fsm | diff -u examples/vending/vending.fsm -")
+    add_test(NAME vending_trace_composes_the_two_halves
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace examples/vending/vending.fsm credit=100 credit=150 dispense served); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"Waiting --credit--> Credited\" && printf '%s\\n' \"$out\" | grep -qF -e \"Credited --dispense--> Dispensing\" && [ $code -eq 0 ]")
+    add_test(NAME vending_refuses_a_vend_before_it_is_paid
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace examples/vending/vending.fsm dispense); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"the table has no row for Waiting --dispense-->\" && [ $code -eq 1 ]")
+    add_test(NAME vending_reports_its_sink_and_stays_clean
+        COMMAND sh -c "cd \"${CMAKE_CURRENT_SOURCE_DIR}\" && out=$(\"$<TARGET_FILE:fsmtable-inspect>\" examples/vending/vending.fsm); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"sinks:    SoldOut  (nothing leaves them; often deliberate)\" && [ $code -eq 0 ]")
+
     # Every relative link in a markdown file in this tree has to point at something. The script
     # carries the reason it exists; the short version is that a false reference to a file this
     # repository does not have reached a shipped README once already.

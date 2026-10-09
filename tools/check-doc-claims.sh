@@ -41,6 +41,11 @@
 #      the front page cannot teach a syntax the format rejects. No rule read this block before
 #      2026-10-08, and it had grown trailing `#` comments, which rule 8 makes an error; moving the
 #      notes onto their own lines is what made the block true, and this rule is what keeps it true.
+#   8. examples/vending/README.md — its four output blocks, re-run and diffed the way (3) reads the
+#      inspector's: the union the merge writes (so the committed artifact is the two parents' output),
+#      the composed walk over that union, the inspector's summary of it, and the two refusals the
+#      example is built around. Its "build your own" recipe is checked the way the calculator's is (1),
+#      and the example's three .fsm files are covered by the tree check (4) like every other one.
 #
 # Exit codes: 0 every claim re-derived, 1 one of them did not hold, 2 the command line is wrong.
 set -u
@@ -195,6 +200,13 @@ check_output_block() {
     expected=$work/expected.txt
     actual=$work/actual.txt
     commands=$work/commands.txt
+    # Both files are EMPTIED here rather than left to the awk's first write: a block with no command
+    # line leaves `commands` untouched, and a stale one from the previous block would then be re-run
+    # under this block's name — the vacuity the `[ ! -s "$commands" ]` guard below exists to catch, and
+    # which it cannot catch if the file it reads was not truncated first. (Measured: a README block
+    # written without its `$ ` line passed against the PREVIOUS block's output.)
+    : > "$expected"
+    : > "$commands"
     : > "$actual"
 
     # The block, split into what the commands must print and the commands themselves. A blank
@@ -358,7 +370,7 @@ check_recipe "$root/examples/protocol/README.md" 'A worked adaptation' \
     "$root/examples/protocol/protocol.fsm" 'protocol recipe'
 check_composed_names "$root/examples/protocol/README.md" "$recipe_hpp"
 check_output_block "$root/examples/inspector/README.md" 'Real output, on this repository'
-# The floor is a vacuity guard, not a pin on the number: today the tree check finds 5 files
+# The floor is a vacuity guard, not a pin on the number: today the tree check finds 8 files
 check_tree "$root/examples/inspector/README.md" 4
 check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonical form back needs' \
     "$root/examples/protocol/protocol.fsm"
@@ -366,6 +378,18 @@ check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonic
 # unreachable-state finding. Re-run and diffed line for line.
 check_output_block "$root/TRANSFORM.md" 'Real output, on this repository'
 check_output_block "$root/TRANSFORM.md" 'Real output: a merge'
+# The vending example (examples/vending/README.md) — the merge verb's worked example. The two parents
+# and the union they produce, the composed walk, the sink the inspector reports, and the two refusals
+# the example is built around. Its "build your own" ends with a recipe like the calculator's and the
+# protocol's, so it is checked the same way: the block appended to the real union, the generator's
+# counts against the document's. Placed after check_composed_names, which uses the header its own
+# recipe generated.
+check_output_block "$root/examples/vending/README.md" '## The union, as the tool writes it'
+check_output_block "$root/examples/vending/README.md" '## The composed walk'
+check_output_block "$root/examples/vending/README.md" '## What the inspector reports'
+check_output_block "$root/examples/vending/README.md" '## The two refusals'
+check_recipe "$root/examples/vending/README.md" '### Worked adaptation: a restock' \
+    "$root/examples/vending/vending.fsm" 'vending recipe'
 # The front page's own machine: the block that teaches the syntax must be one the format accepts.
 check_indented_machine "$root/README.md" '## The format, in one screen'
 

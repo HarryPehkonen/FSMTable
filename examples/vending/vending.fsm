@@ -1,0 +1,18 @@
+# Merged by fsmtable-transform from examples/vending/coins.fsm (machine Coins)
+# and examples/vending/dispenser.fsm (machine Dispenser), fused on the state names the two
+# machines share. Re-merge with: fsmtable-transform merge examples/vending/coins.fsm examples/vending/dispenser.fsm -o <this file>
+# Fingerprint of the canonical form (FNV-1a 64): 0xABCC1A2DF89CE23D
+version 1
+machine Coins
+initial Waiting
+kind credit = 1
+kind refund = 2
+kind dispense = 3
+kind served = 4
+kind empty = 5
+transition Credited --refund--> Waiting
+transition Credited --dispense--> Dispensing
+transition Dispensing --served--> Credited
+transition Dispensing --empty--> SoldOut
+transition Waiting --credit--> Waiting when lt 150
+transition Waiting --credit--> Credited

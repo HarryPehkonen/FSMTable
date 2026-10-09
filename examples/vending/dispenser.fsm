@@ -1,0 +1,23 @@
+# The stock half of a vending machine: it decides whether a vend may happen. It knows nothing about
+# money — that is coins.fsm, and the two are composed into vending.fsm by `fsmtable-transform
+# merge` (README.md).
+#
+# Its initial state is named `Credited`, not `Ready`, and that name IS the composition: two
+# machines fuse on the state names they share, so the stock half begins exactly where the payment
+# half says the money is in (README.md).
+version 1
+machine Dispenser
+initial Credited
+
+kind dispense = 3
+kind served = 4
+kind empty = 5
+
+# A vend takes the machine out of service until the goods are out.
+transition Credited --dispense--> Dispensing
+
+# Two ways back out, and the driver's count is what tells them apart: `served` is goods in the
+# customer's hands, `empty` is the hopper running dry mid-vend. The machine decides what each one
+# means; how many are left is stock, and stock is not in a table.
+transition Dispensing --served--> Credited
+transition Dispensing --empty--> SoldOut
