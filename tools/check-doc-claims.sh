@@ -51,6 +51,12 @@
 #      the refusal ctest cases already diff the binary against, so the README cannot drift from the
 #      trace a reader would get. Its "build your own" recipe is checked the way the calculator's is (1),
 #      and csv.fsm is covered by the tree check (4) like every other .fsm in examples/.
+#  10. examples/edge/README.md — its machine walk (an output block, the same shape as 9's) and its two
+#      recorded runs, compared against the committed input/*.expected files the edge_session and the
+#      refusal ctest cases diff the binary against. This example has NO counted recipe: it is the
+#      on-ramp, its "build your own" is a checklist rather than an appended machine, and a document
+#      that grew a `**N states and M rows**` line without a recipe to generate it would fail nothing —
+#      so there is deliberately no check_recipe call for it.
 #
 # Exit codes: 0 every claim re-derived, 1 one of them did not hold, 2 the command line is wrong.
 set -u
@@ -409,7 +415,7 @@ check_recipe "$root/examples/protocol/README.md" 'A worked adaptation' \
     "$root/examples/protocol/protocol.fsm" 'protocol recipe'
 check_composed_names "$root/examples/protocol/README.md" "$recipe_hpp"
 check_output_block "$root/examples/inspector/README.md" 'Real output, on this repository'
-# The floor is a vacuity guard, not a pin on the number: today the tree check finds 9 files
+# The floor is a vacuity guard, not a pin on the number: today the tree check finds 10 files
 check_tree "$root/examples/inspector/README.md" 4
 check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonical form back needs' \
     "$root/examples/protocol/protocol.fsm"
@@ -445,6 +451,19 @@ check_file_block "$root/examples/csv/README.md" \
 check_recipe "$root/examples/csv/README.md" \
     '### Worked adaptation: a lone carriage return ends a record' \
     "$root/examples/csv/csv.fsm" 'csv recipe'
+# The edge example (examples/edge/README.md) — the on-ramp, and the first README whose subject is one
+# kind in three states. Its machine walk is an output block like the csv one's; its recorded run and
+# its refusal are compared against the committed input/*.expected files that the edge_session and the
+# refusal ctest cases already diff the binary against, so the README cannot drift from the trace a
+# reader would get. It has no counted recipe (see the note at the top): the example is deliberately
+# the lightest in the tree and its "build your own" is a checklist, not a machine to append.
+check_output_block "$root/examples/edge/README.md" '## The machine, walked without the driver'
+check_file_block "$root/examples/edge/README.md" \
+    '`input/session.expected`, diffed byte for byte by the `edge_session` ctest' \
+    "$root/examples/edge/input/session.expected"
+check_file_block "$root/examples/edge/README.md" \
+    '`input/stray.expected`, the message and all' \
+    "$root/examples/edge/input/stray.expected"
 check_indented_machine "$root/README.md" '## The format, in one screen'
 
 if [ "$failed" -eq 0 ]; then

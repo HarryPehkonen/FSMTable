@@ -149,6 +149,35 @@ add_executable(csv examples/csv/main.cpp)
 target_link_libraries(csv PRIVATE csv_core)
 target_compile_options(csv PRIVATE ${FSMTABLE_WARNINGS})
 
+# --- the edge example: the on-ramp. Six rows, three states, two kinds, no guards, no values, no
+# entry/exit, no merge — the smallest machine in the tree, and the one to read first
+# (examples/edge/README.md). Its driver classifies a byte as `zero`, `one`, or neither, so the
+# machine stays total over its own alphabet and a byte that is neither is the driver's refusal.
+set(FSMTABLE_EDGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/examples/edge")
+
+add_custom_command(
+    OUTPUT "${FSMTABLE_GENERATED_DIR}/fsm_edge.hpp"
+    COMMAND fsmtable_gen examples/edge/edge.fsm
+            -o "${FSMTABLE_GENERATED_DIR}/fsm_edge.hpp"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    DEPENDS fsmtable_gen "${FSMTABLE_EDGE_DIR}/edge.fsm"
+    COMMENT "fsmtable-gen: edge.fsm -> fsm_edge.hpp"
+    VERBATIM)
+add_custom_target(fsmtable_edge_header
+    DEPENDS "${FSMTABLE_GENERATED_DIR}/fsm_edge.hpp")
+
+add_library(edge_core STATIC examples/edge/edge.cpp)
+add_dependencies(edge_core fsmtable_edge_header)
+target_link_libraries(edge_core PUBLIC fsmTable)
+target_compile_options(edge_core PRIVATE ${FSMTABLE_WARNINGS})
+target_include_directories(edge_core PUBLIC
+    "${FSMTABLE_EDGE_DIR}" "${FSMTABLE_GENERATED_DIR}")
+target_include_directories(edge_core SYSTEM PUBLIC "${FSMTABLE_FSMGINE_DIR}/include")
+
+add_executable(edge examples/edge/main.cpp)
+target_link_libraries(edge PRIVATE edge_core)
+target_compile_options(edge PRIVATE ${FSMTABLE_WARNINGS})
+
 # --- the inspector: the library half of the format with no generator in sight. It reads a .fsm at
 # RUN time, so there is nothing to generate and nothing to link but the library itself.
 add_executable(fsmtable-inspect examples/inspector/inspector.cpp)
@@ -329,6 +358,31 @@ if(FSMTABLE_BUILD_TESTS)
     # `"a,b",c` and names the action each row carries, which is what ties an action to a row.
     add_test(NAME csv_trace_names_the_actions
         COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_CSV_DIR}/csv.fsm\" quote data=97 comma data=98 quote comma data=99 newline); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"Quoted --comma--> Quoted  (action append)\" && printf '%s\\n' \"$out\" | grep -qF -e \"QuoteSeen --comma--> FieldStart  (action end_cell)\" && printf '%s\\n' \"$out\" | grep -qF -e \"Unquoted --newline--> FieldStart  (action end_record)\" && [ $code -eq 0 ]")
+
+    add_executable(edge_tests examples/edge/edge_test.cpp)
+    target_link_libraries(edge_tests PRIVATE edge_core GTest::gtest_main)
+    target_compile_options(edge_tests PRIVATE ${FSMTABLE_WARNINGS})
+    add_test(NAME edge_tests COMMAND edge_tests)
+
+    # The end-to-end session for the edge example: the ten bits `0010110110` through the built
+    # binary, diffed against the recorded trace byte for byte. A temporary file rather than a pipe so
+    # that the exit code is pinned beside the bytes, the way the csv session does it. The input file
+    # is the bits and nothing else — no trailing newline — because the input is a bit stream, not a
+    # text file, and a newline is a byte the driver does not read as a bit (README.md, "The refusal").
+    add_test(NAME edge_session
+        COMMAND sh -c "work=$(mktemp -d); trap 'rm -rf $work' EXIT; \"$<TARGET_FILE:edge>\" < \"${FSMTABLE_EDGE_DIR}/input/session.txt\" > $work/out; code=$?; diff -u \"${FSMTABLE_EDGE_DIR}/input/session.expected\" $work/out && [ $code -eq 0 ]")
+
+    # The driver's refusal, which is the only refusal this example has: the machine is total over its
+    # two kinds, so a byte that is neither reaches no row, and the driver reports it and exits 1.
+    # Message and code are checked together, in the shell, for the reason given at the merge cases.
+    add_test(NAME edge_refuses_a_byte_that_is_not_a_bit
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:edge>\" < \"${FSMTABLE_EDGE_DIR}/input/stray.txt\"); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"! byte 3: 'x' is not a bit\" && [ $code -eq 1 ]")
+
+    # The same machine without the driver: the inspector walks the rows for `zero zero one zero` and
+    # names the action each row carries. One kind, three arrivals, and only one of the three speaks —
+    # the observation the example exists to make, shown by the tool rather than by the trace output.
+    add_test(NAME edge_trace_shows_one_kind_three_ways
+        COMMAND sh -c "out=$(\"$<TARGET_FILE:fsmtable-inspect>\" --trace \"${FSMTABLE_EDGE_DIR}/edge.fsm\" zero zero one zero); code=$?; printf '%s\\n' \"$out\"; printf '%s\\n' \"$out\" | grep -qF -e \"Start --zero--> SawZero\" && printf '%s\\n' \"$out\" | grep -qF -e \"SawZero --zero--> SawZero\" && printf '%s\\n' \"$out\" | grep -qF -e \"SawZero --one--> SawOne  (action rising)\" && printf '%s\\n' \"$out\" | grep -qF -e \"SawOne --zero--> SawZero  (action falling)\" && [ $code -eq 0 ]")
 
     # The inspector, as ctest cases. Each pins the exit code as well as the output, because the
     # exit code is the part a script or a hook would use: 0 nothing to report, 1 the file could not

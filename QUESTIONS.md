@@ -471,3 +471,46 @@ never called one. The division taken is the same one the protocol example draws 
 the stream rather than of a byte is the driver's, named in one place and tested (`csv_test.cpp`,
 `TheLastRecordNeedsNoTrailingLineEnd`, `AQuotedFieldAtEndOfInputIsClosed`,
 `EndOfInputInsideAQuotedFieldIsRefused`).
+
+## Q26 — Is the first bit absorbed by a state, or by the driver?
+
+The example's behaviour fixes one thing: the first bit reports nothing (`01` prints one line, not
+two), because "nothing → 0" is not a change. The design brief put that in the machine as a `Start`
+state whose two rows carry no action, and left open whether the state is the right home for the
+decision or whether the driver should hold it.
+
+**Reading taken:** a state. The table decides what the first bit means — absorbed, reporting nothing —
+exactly as it decides every other row, and the driver keeps no memory of its own beyond the two byte
+values it classifies. `Start` earns its place twice: it is what makes the first report silent, and it
+is what keeps the machine total, since it too has a row for each kind. The price is one state that
+exists only to be left, and two rows that do nothing.
+
+**The alternative:** the driver drops the first report (a `bool started`, or simply discarding the
+first line) with the machine initial in `SawZero` or `SawOne`. The recorded session would be
+identical, but the decision would leave the file that exists to hold decisions, and the machine would
+claim a bit it never saw: a machine initial in `SawZero` takes the *first* byte `1` through the row
+`SawZero --one--> SawOne action rising`, printing `0 --> 1` — an edge from a zero that never arrived.
+A `Start` state that leaves on both kinds with no action is what prevents that, and it costs one
+state and two rows.
+
+## Q27 — What happens to a byte that is not a bit?
+
+The machine's alphabet is its two kinds and it is total over them: every state has a row for `zero`
+and a row for `one`. It therefore has nothing to say about any other byte and no kind to receive one
+in. The brief said the driver refuses a byte that is not `0` or `1`, reports it and exits 1, and left
+the shape of that refusal and the tail of the input open.
+
+**Reading taken:** the driver stops at the first byte that is neither, reports its 1-based position
+and what the byte was — as the character when it is printable, by value otherwise — keeps whatever
+the actions had already printed, and exits 1. The recorded session is therefore the ten bits and no
+trailing newline: the input is a bit stream rather than a text file, and a newline is refused like
+any other byte, so `echo 01 | ./build/edge` reports `byte 3: 0x0a is not a bit`. Nothing is invented
+for the bytes after the refusal, and no third kind is added to the machine.
+
+**The alternative:** a third kind — `other`, say — with a row in each of the three states to absorb
+the byte, which makes the machine answer for a byte it cannot name and costs one row per state
+(`Start`, `SawZero` and `SawOne` each). Or the driver skipping whitespace, which makes
+`echo 01 | ./build/edge` work at the price of two vocabularies in one reader — bits, and the gaps
+between them. The reading keeps one vocabulary and one place for the refusal, because "a kind is what
+can arrive" is the observation this example exists to teach, and a byte that is not a kind has not
+arrived.

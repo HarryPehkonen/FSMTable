@@ -1,11 +1,12 @@
 # Examples
 
-Five worked examples. Four are complete programs you can build, run and read; the fifth is three
-`.fsm` files and the tools this repository already ships. Each one is here to show a different face
-of the format:
+Six worked examples. Five are complete programs you can build, run and read; the sixth is three
+`.fsm` files and the tools this repository already ships. They are listed in the order to read them
+in: the first teaches the four nouns and nothing else, and each one after it adds one idea.
 
 | example | what it is | what it is here to show |
 | --- | --- | --- |
+| [`edge/`](edge/README.md) — **start here** | an edge detector: six rows, three states, two kinds | the format itself, with **no prerequisites**: a state is what you remember, a kind is what can arrive, a row is what that kind means given where you are, and an action is the row that speaks. The same `zero` kind is silence from two states and a report from the third, and the state is the whole difference — every example below adds one idea to this one |
 | [`calculator/`](calculator/README.md) | a line-oriented calculator: an expression in, an answer or an error out | the generator on **arithmetic** — refined rows as an operator-precedence table, a guard on an event's value, a self-transition, and the split between what the table decides and what the code around it holds |
 | [`protocol/`](protocol/README.md) | a connection lifecycle with retransmission and a timeout | the generator on **time** — a clock the format cannot hold, a refinement pair, a sink state, exit/action/entry composition, and the four limits a real design runs into |
 | [`csv/`](csv/README.md) | an RFC 4180 reader: a byte stream in, a `Cell:` line per cell and a `NEW LINE` per record out | the generator on **actions** — fifteen rows sharing three actions, a value-carrying kind whose value *is* the data, a state whose whole job is to be the instant between two others, and one row deliberately missing |
@@ -14,12 +15,12 @@ of the format:
 
 ## Each one stands alone
 
-There is no shared example library. `calculator.cpp`, `protocol.cpp`, `csv.cpp` and `inspector.cpp`
-each carry their own small driver, and the three that build a machine each have their own header. That is a
-deliberate trade: a few hundred duplicated lines in exchange for being able to read one directory
-and understand all of it, without following a third file that exists only to be shared. `vending/`
-takes the same trade to its limit and has no driver at all: its three `.fsm` files are the whole
-example, and the tools that read them are the ones already installed on the machine.
+There is no shared example library. `edge.cpp`, `calculator.cpp`, `protocol.cpp`, `csv.cpp` and
+`inspector.cpp` each carry their own small driver, and the four that build a machine each have their
+own header. That is a deliberate trade: a few hundred duplicated lines in exchange for being able to
+read one directory and understand all of it, without following a third file that exists only to be
+shared. `vending/` takes the same trade to its limit and has no driver at all: its three `.fsm` files
+are the whole example, and the tools that read them are the ones already installed on the machine.
 
 ## The recipe they follow
 

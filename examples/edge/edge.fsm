@@ -1,0 +1,39 @@
+# An edge detector, as a table.
+#
+# Six rows, three states and two kinds: the smallest machine in this repository, and the one to
+# read first. Nothing here is guarded, no row compares a value, and no state carries an
+# entry/exit clause — the four nouns (machine, state, kind, row) are the whole of it.
+#
+# `Start` is one bit of memory. Nothing has arrived yet, so there is no last bit to compare the
+# next one against: the first `0` and the first `1` are absorbed by the first two rows and report
+# nothing, because "nothing -> 0" is not a change. After that, a state IS the last bit seen —
+# `SawZero` or `SawOne` — and the four rows below say what the next bit means.
+#
+# The observation this file is here to make is that the SAME kind has three meanings, and the
+# state it arrives in is the whole difference:
+#
+#     Start   --zero--> SawZero   the first bit, absorbed; nothing is reported
+#     SawZero --zero--> SawZero   the same bit twice; nothing changed, nothing is reported
+#     SawOne  --zero--> SawZero   a 1 followed by a 0; the row's action reports the edge
+#
+# Three rows, one kind, and only one of them speaks. The action is what the row does about the
+# bit, and here it is the whole of what the driver prints: `rising` prints `0 --> 1`, `falling`
+# prints `1 --> 0`, and the absorb rows print nothing at all.
+#
+# What a byte IS is the driver's (edge.cpp), not this file's: the machine's alphabet is these two
+# kinds and the machine is total over it — every state has a row for `zero` and for `one`. A byte
+# that is neither `0` nor `1` therefore reaches no row and no state, and refusing it is the
+# driver's job (README.md, "The refusal").
+version 1
+machine Edge
+initial Start
+
+kind zero = 1
+kind one = 2
+
+transition Start   --zero--> SawZero
+transition Start   --one-->  SawOne
+transition SawZero --zero--> SawZero
+transition SawOne  --one-->  SawOne
+transition SawZero --one-->  SawOne  action rising
+transition SawOne  --zero--> SawZero action falling
