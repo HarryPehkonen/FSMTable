@@ -24,10 +24,13 @@ std::string describe(unsigned char byte) {
     if (byte >= 0x20 && byte < 0x7f)
         return std::string("'") + static_cast<char>(byte) + "'";
 
-    static const char* const digits = "0123456789abcdef";
+    // A std::string rather than a `const char*`: indexing a string is a call, while indexing a
+    // pointer is pointer arithmetic to clang-tidy's cppcoreguidelines check — the same finding the
+    // repository records for `argv[i]` rather than writes a cast around (`.ci/tidy-baseline.txt`).
+    static const std::string digits = "0123456789abcdef";
     std::string hex = "0x";
-    hex.push_back(digits[byte >> 4]);
-    hex.push_back(digits[byte & 0x0f]);
+    hex.push_back(digits[static_cast<std::size_t>(byte >> 4)]);
+    hex.push_back(digits[static_cast<std::size_t>(byte & 0x0f)]);
     return hex;
 }
 
