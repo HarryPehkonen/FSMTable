@@ -70,9 +70,9 @@ this one.
 | the machine | `build/generated/fsm_edge.hpp` | **the generator.** Never edit it; it is rebuilt on every build. |
 | the driver | `edge.cpp`, `main.cpp` | **you.** What a byte *is* — `zero`, `one`, or neither — and the refusal. |
 
-`edge.hpp` is the seam between the last two: the driver's whole interface to the machine. It is four
-declarations and two classes smaller than the csv example's, and that difference is the point of
-starting here.
+`edge.hpp` is the seam between the last two: the driver's whole interface to the machine, and the
+same shape as the csv example's — a `Result`, a `Reader`, and the two free functions the actions
+reach a run through — one action and two pieces of driver state smaller.
 
 ## The machine, walked without the driver
 
@@ -90,9 +90,10 @@ examples/edge/edge.fsm: Edge — trace of 4 event(s) from Start
   SawOne --zero--> SawZero  (action falling)
 ```
 
-Read the first three lines together: the same kind, three arrivals, and the `(action ...)` tag on
-only one of them. A trace is not a driver — no byte is classified and no action runs — which is
-exactly why it is the honest way to show a row: it shows the row, and nothing else.
+Read the three `--zero-->` lines together — the first, the second and the last — and compare them
+with the one in between: the same kind, three arrivals, and the `(action ...)` tag on only the third
+of them. A trace is not a driver — no byte is classified and no action runs — which is exactly why
+it is the honest way to show a row: it shows the row, and nothing else.
 
 ## The recorded run, line for line
 
@@ -118,9 +119,8 @@ three `0`s after a `1` ran `falling`.
 the machine can never have nothing to say about a bit. A byte that is **neither** bit is therefore
 not the machine's problem — it has no kind for it and no state to arrive in — and refusing it is the
 driver's, which is where the boundary sits in every example here. `input/stray.txt` is `01x`, the
-smallest stream that reaches it:
-
-The refusal's own recorded trace is `input/stray.expected`, the message and all:
+smallest stream that reaches the refusal, and
+`input/stray.expected`, the message and all, is what the run printed:
 
 ```
 0 --> 1
@@ -144,7 +144,8 @@ and one bit of new memory.
 - **what a byte is.** The machine has two kinds and no notion of `'0'` or `'1'`; the driver reads a
   byte, decides which of the three cases it is (a bit, a bit, or neither), and feeds the machine a
   kind. Both kinds are plain — neither carries a value on the event — so there is no refinement slot
-  here at all: this is the one example where the event is nothing but its kind.
+  here at all, and the event is nothing but its kind. (The csv example's table has no guard either,
+  but its actions read the byte off the event; here nothing reads anything.)
 - **the refusal.** A byte that is neither bit is the driver's report and the driver's exit code
   (`edge.cpp`). The alternative — a third kind such as `other`, with a row in every state to absorb
   it — is the machine absorbing a byte it cannot see; this example leaves the machine total over
