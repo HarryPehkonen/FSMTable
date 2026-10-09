@@ -103,7 +103,7 @@ clause) — three more readings, each with its alternative written up beside it.
 
 ## Appendix — the examples after the additions
 
-The four additions above changed what the format can *express*. The three below change nothing: they
+The four additions above changed what the format can *express*. The four below change nothing: they
 are consumers, and between them they are evidence that the two frozen sections are enough to write a
 real program against.
 
@@ -113,6 +113,8 @@ real program against.
     and tools/check-doc-links.sh              b377eb3   examples/protocol/README.md
                                                         examples/inspector/README.md
                                                         examples/README.md
+    the vending example — two half-machines    db08ac8   examples/vending/README.md
+    fused on one shared name, no code
 
     Gate verdict line for the second (verbatim):
     all 12 stage(s) passed in 115s
@@ -367,3 +369,54 @@ decision buried in code:
   a row that led back into the second machine's initial state ran nothing before and runs nothing
   after, because the clause is gone. Carrying the clause would run an action the second machine never
   ran on entry, which is the hidden side effect ENTRY_EXIT.md's Q14 exists to keep out.
+
+## Appendix — the vending example: the merge verb, worked
+
+`examples/vending/` is the fourth example and the first one that generates no code: three `.fsm`
+files, the two tools that read them, and a README in the shape the other three keep. It exists
+because the text → text direction shipped with a contract (`TRANSFORM.md`) and no worked example — a
+reader could see what `merge` promises and not what a composition looks like when it is real.
+
+    what                                        document
+    the two halves and the seam                 examples/vending/coins.fsm, dispenser.fsm
+    the union, header and all (committed)       examples/vending/vending.fsm
+    the worked example                          examples/vending/README.md
+    the four cases that hold it                 CMakeLists.txt — 4 ctest cases (71 in the suite)
+    the checker that holds its output blocks    tools/check-doc-claims.sh (item 8)
+
+The composition is the smallest one that teaches the point: the payment half's `Credited` and the
+stock half's `initial` are the SAME name, so the seam is visible in the two files rather than
+described in prose, and the union is committed as the bytes the tool writes. What the example spends
+its words on instead is what the format cannot do: the credit is a sum and a row has one `when` slot,
+so the driver adds the coins and the machine compares one number against one number —
+`Waiting --credit--> Waiting when lt 150` with the unguarded row behind it is that boundary in two
+lines, and the two refusals the README prints are the same boundary seen from the other side.
+
+Three things this delivery fixed rather than wrote down:
+
+* **A doc-claims block with no command line passed against the wrong output.** `check_output_block`
+  left `$work/commands.txt` to be truncated by its awk's first write, so a block whose `$ ` line was
+  missing re-ran the PREVIOUS block's commands — and the `[ ! -s "$commands" ]` guard the script
+  already had could not see it, because the file it read was never emptied. The first run of the new
+  rules "passed" three vending blocks against TRANSFORM.md's merge output. Both files are emptied
+  before the splitter now, and the guard fires: with the `$ ` line deleted from one block the run
+  fails with "runs no command, so nothing was checked" instead of diffing another document's output.
+* **The four cases were sabotaged before being trusted.** Deleting `transition Waiting --credit-->
+  Credited` from the committed union fails three of the four — the union stops being the parents'
+  output, the trace stops composing, the summary stops naming the sink — and adding a
+  `Waiting --dispense-->` row fails the fourth, with it the claim that a vend before payment is
+  refused. Both edits were undone by re-running the merge, and the regenerated file is byte-identical
+  to the committed one, which is the property the first case exists to hold.
+* **The tree check's comment was a count, and it was low.** It said the tree check finds 5 `.fsm`
+  files; with this example's three it finds 8. The comment says 8 now and the floor stays where it
+  was — a vacuity guard, not a pin on the number.
+
+    Gate verdict, verbatim, from the run on commit db08ac8 (this section was added after it, and the
+    full tier runs again on the push):
+
+    kit-ci: gate.toml — tier 'full', 12 stage(s)
+    GATE PASSED — 12 passed, 0 failed, 0 skipped
+
+    The tests stage's own line, from .ci-logs/tests.log on that run:
+
+    100% tests passed, 0 tests failed out of 71
