@@ -7,9 +7,12 @@ named kinds (NAMED_KINDS.md).
 
 ## The syntax
 
-    state Idle entry on_entry_idle exit on_exit_idle    # both clauses
-    state Running entry on_entry_running                # entry only
-    state Error exit on_exit_error                      # exit only
+    # both clauses
+    state Idle entry on_entry_idle exit on_exit_idle
+    # entry only
+    state Running entry on_entry_running
+    # exit only
+    state Error exit on_exit_error
 
 Rules:
 

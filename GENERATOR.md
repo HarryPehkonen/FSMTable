@@ -276,11 +276,13 @@ the generator is the subject, so taking it out of the build would test nothing.
 ## The other direction: `fsmtable-transform`
 
 `fsmtable-gen` goes text → code. `fsmtable-transform` goes text → text: it reads a `.fsm` and writes
-one back, and its first verb is `rename` —
-`fsmtable-transform rename my_machine.fsm state:Idle=Waiting kind:tick=beat`. It is a surgical edit
+one back, and it has two verbs. `rename` —
+`fsmtable-transform rename my_machine.fsm state:Idle=Waiting kind:tick=beat` — is a surgical edit
 rather than a `dump`, so the comments that carry a machine's reasoning come back byte for byte and a
 rename is one line of diff rather than a reformatted file; the artifact a consumer commits is then
-regenerated from the renamed `.fsm` exactly as it always was (the two-step edit above).
+regenerated from the renamed `.fsm` exactly as it always was (the two-step edit above). `merge` —
+`fsmtable-transform merge login.fsm session.fsm -o session_full.fsm` — composes two machines into
+one, fusing the state names they share and refusing a union that leaves a state unreachable.
 `TRANSFORM.md` has the contract, the exit codes, and the limits — including the one worth knowing
 before you rename anything, that a comment naming a state keeps the old spelling, because a comment
 is prose.

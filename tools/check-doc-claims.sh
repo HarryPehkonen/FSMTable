@@ -37,6 +37,10 @@
 #      refuses it when the two machines share no name. The commands there include one that exits 1 on
 #      purpose, so the blocks' commands are read for their OUTPUT and the exit codes stay the ctest
 #      cases' business.
+#   7. README.md — the machine in "The format, in one screen": it must parse and inspect clean, so
+#      the front page cannot teach a syntax the format rejects. No rule read this block before
+#      2026-10-08, and it had grown trailing `#` comments, which rule 8 makes an error; moving the
+#      notes onto their own lines is what made the block true, and this rule is what keeps it true.
 #
 # Exit codes: 0 every claim re-derived, 1 one of them did not hold, 2 the command line is wrong.
 set -u
@@ -312,6 +316,42 @@ check_canonical_recipe() {
     fi
 }
 
+# $1 document (README.md), $2 the marker above its indented machine block.
+check_indented_machine() {
+    doc=$1
+    marker=$2
+
+    start=$(line_of "$marker" "$doc")
+    if [ -z "$start" ]; then
+        fail "'$marker' is no longer in $doc, so its machine block was not checked"
+        return
+    fi
+
+    block=$work/readme_machine.fsm
+    # The first indented block after the marker: strip the four leading spaces, stop at the first
+    # line that is not indented. A block that is not there leaves an empty file, and the 'version 1'
+    # guard below is what turns that into a failure rather than a vacuous pass.
+    awk -v start="$start" '
+        NR > start {
+            if (!seen) { if ($0 ~ /^    /) seen = 1; else next }
+            else if ($0 !~ /^    /) exit
+            print substr($0, 5)
+        }
+    ' "$doc" > "$block"
+
+    if ! grep -q '^version 1' "$block"; then
+        fail "$doc still has '$marker', but no indented machine block follows it"
+        return
+    fi
+
+    if "$inspect" "$block" > "$work/readme.out" 2>&1; then
+        note "$doc: the 'The format, in one screen' machine parses and inspects clean"
+    else
+        fail "$doc's 'The format, in one screen' machine does not inspect clean:"
+        sed 's/^/      /' "$work/readme.out"
+    fi
+}
+
 check_recipe "$root/examples/calculator/README.md" 'Worked example: add a' \
     "$root/examples/calculator/calculator.fsm" 'calculator recipe'
 check_recipe "$root/examples/protocol/README.md" 'A worked adaptation' \
@@ -326,6 +366,8 @@ check_canonical_recipe "$root/examples/inspector/README.md" 'Writing the canonic
 # unreachable-state finding. Re-run and diffed line for line.
 check_output_block "$root/TRANSFORM.md" 'Real output, on this repository'
 check_output_block "$root/TRANSFORM.md" 'Real output: a merge'
+# The front page's own machine: the block that teaches the syntax must be one the format accepts.
+check_indented_machine "$root/README.md" '## The format, in one screen'
 
 if [ "$failed" -eq 0 ]; then
     printf 'check-doc-claims: every claim re-derived from the tools\n'

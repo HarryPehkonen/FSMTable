@@ -1,8 +1,12 @@
 # FSMTable
 
-A textual format for finite state machines, and a code generator that turns it into C++.
+A textual format for finite state machines, and three tools around it: a code generator (C++ or
+TypeScript), an inspector that reads a machine back, and a transform that edits the text itself.
 
-    my_machine.fsm  --fsmtable-gen-->  fsm_my_machine.hpp  -->  your program
+    my_machine.fsm  --fsmtable-gen-->               fsm_my_machine.hpp   (C++)       -->  your program
+    my_machine.fsm  --fsmtable-gen --target deno-->  my_machine.ts       (TypeScript)  -->  your program
+    my_machine.fsm  --fsmtable-inspect-->            a report: --canonical, --trace, --graph
+    my_machine.fsm  --fsmtable-transform-->          .fsm text back: a rename, or two machines merged
 
 The point is the shape of the work, not the size of the library. A machine that does something
 specific and has no unexpected features is not easy for a person to write by hand — a table is.
@@ -32,8 +36,9 @@ a `constexpr` table that runs.
 `SPEC.md`'s stages A, B and C are delivered, as are the generator and two additive format
 features (named event kinds, entry and exit actions). Sections 2 and 4 of the spec — the row
 format and the library API — are frozen text, and the additions sit below that block: every
-frozen test, the corpus and the dump oracle pass unchanged. `REPORT.md` carries the deliveries
-and the gate verdict for each; `GENERATOR.md` ends with what is deliberately not built yet.
+frozen test, the corpus and the dump oracle pass unchanged. `REPORT.md` carries the stage A, B and C
+deliveries and the additions reported beside them, each with its gate verdict; `GENERATOR.md` ends
+with what is deliberately not built yet.
 
 The text → text direction is the third tool: `fsmtable-transform` has two verbs. `rename` moves a
 state, a kind name or the machine's own name, and nothing else in the file moves with it, comments
@@ -41,6 +46,11 @@ included. `merge` composes two machines into one — a union whose shared state 
 meets on — and writes a new file with a provenance header naming both parents and the merged
 fingerprint. A composition that would leave a state unreachable is refused with the states named
 rather than written. `TRANSFORM.md` is the contract for both, the exit codes and the limits.
+
+The generator and the inspector shipped to the same bar: `--target deno` emits the same machine as a
+TypeScript module the gate type-checks and tests (`GENERATOR.md`), and `fsmtable-inspect` reads a
+machine back — a summary, or `--canonical`, `--trace`, `--graph` — under its own ctest cases
+(`examples/inspector/README.md`). Those three tools are everything the banner above shows.
 
 `examples/` holds three complete programs, each with its own tests and its own README: a calculator
 (the generator on arithmetic), a connection lifecycle with timeouts (the generator on time), and
@@ -63,11 +73,12 @@ rather than written. `TRANSFORM.md` is the contract for both, the exit codes and
 `fsmtable-gen` exit codes: `0` written, `1` the input is unusable, `2` the command line is.
 `fsmtable-transform` carries its own three and differs in one place — a file that does not parse is
 the caller's mistake there too — so its table is the authority (`TRANSFORM.md`).
-Needs C++17, CMake, GTest, clang-format and clang-tidy for the gate, and FSMgine 2.1.0's headers
-at `~/hermes-workspace/FSMgine` (point `-DFSMTABLE_FSMGINE_DIR=<path>` elsewhere; configuration
-fails loudly without them, because the differential oracle needs them). The `deno` stage needs
-`deno` — 2.9.6 is what it is gated with here — and skips itself rather than failing when `deno` is
-not on the PATH.
+Needs C++17, CMake, GTest, clang-format and clang-tidy for the gate, `kit-ci` to run it
+(`scripts/gate.sh` is the entry point; KitCI is installed once per machine — its own README has the
+one command), and FSMgine 2.1.0's headers at `~/hermes-workspace/FSMgine` (point
+`-DFSMTABLE_FSMGINE_DIR=<path>` elsewhere; configuration fails loudly without them, because the
+differential oracle needs them). The `deno` stage needs `deno` — 2.9.6 is what it is gated with
+here — and skips itself rather than failing when `deno` is not on the PATH.
 
 ## Install the tools (once per machine)
 
@@ -92,19 +103,25 @@ reading a build directory from an old checkout rather than the binary the machin
 
 ## The format, in one screen
 
-    version 1                                  # always the first non-comment line
+    # `version 1` is always the first non-comment line
+    version 1
     machine Door
     initial Closed
-    kind open = 1                              # a name for an event kind, 0..255
+    # a name for an event kind, 0..255
+    kind open = 1
     kind knock = 2
-    state Closed entry on_entry_closed         # entry and exit actions per state
+    # entry and exit actions are per state
+    state Closed entry on_entry_closed
     transition Closed --open--> Open action on_opening
-    transition Open --knock--> Open            # stays put — still an external transition
-    transition Closed --2--> Broken            # the number still works
+    # a row that stays put is still an external transition
+    transition Open --knock--> Open
+    # the number works wherever the name does
+    transition Closed --2--> Broken
 
-Rules 1–13 of `SPEC.md` section 2 are the authority. `NAMED_KINDS.md` and `ENTRY_EXIT.md`
-document the two additions. Any byte string is either a valid machine or an error with a line
-number and a message.
+A comment is its own line — the format has no trailing comments — which is why the notes in that
+block stand above the lines they explain, not beside them. Rules 1–10 of `SPEC.md` section 3 are the
+parser's rules and they are the authority; `NAMED_KINDS.md` and `ENTRY_EXIT.md` document the two
+additions. Any byte string is either a valid machine or an error with a line number and a message.
 
 ## Documentation
 
@@ -117,6 +134,7 @@ number and a message.
     ENTRY_EXIT.md    `state <name> entry ... exit ...` — entry and exit actions per state
     QUESTIONS.md     every place the spec left a choice, and the reading taken
     REPORT.md        what was delivered, and the gate verdict for each delivery
+    INCIDENTS.md     edits to the files that came from the project kit, and why
     examples/README.md
                      the three examples, the recipe they share, and what to build next
     examples/calculator/README.md
@@ -135,8 +153,11 @@ number and a message.
     corpus/          .fsm files the tests and the fuzzer share
     examples/        calculator, protocol, inspector — three complete consumers
     fuzz/            the libFuzzer target
-    tools/           ci.sh (the gate), the kit probes, and the two document checkers
+    scripts/         the gate: gate.sh, gate-env.sh, and one script per stage
+    gate.toml        the gate's policy — the stages, the two tiers, the failure rules
+    tools/           the two document checkers, and the kit's release script
     .ci/             the accepted clang-tidy findings, with the reason for each
+    .githooks/       the hooks that NAME a gate tier (pre-commit fast, pre-push full)
 
 ## Two things worth knowing before reading the code
 

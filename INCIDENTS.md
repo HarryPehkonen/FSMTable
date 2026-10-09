@@ -1,7 +1,8 @@
 ## 2026-10-06 — the gate is no longer a 902-line bash script (wiring record, not a breakage)
 
 What changed:      `tools/ci.sh` is deleted. The gate is now `gate.toml` — the policy: 11 stages
-                   in two tiers — run by `kit-ci`, one binary installed once per machine
+                   in two tiers (12 since the `deno` stage was appended, 2026-10-08) — run by
+                   `kit-ci`, one binary installed once per machine
                    (`cmake --install build --prefix ~/.local`), plus `scripts/gate-env.sh` (the
                    .ci.env knobs and the helpers every stage reads), `scripts/gate.sh` (the one
                    file all three callers run) and one `scripts/<stage>.sh` per stage. The two
@@ -10,7 +11,7 @@ What changed:      `tools/ci.sh` is deleted. The gate is now `gate.toml` — the
                    incident — it is here because the hooks and the retired gate both say "if you
                    edit this file, say why in INCIDENTS.md".
 Check moved:       Every stage the old gate ran is still run, under the same name and in the
-                   same order. full tier: tree format build tests release version asan tsan tidy pristine fuzz. fast tier: format build tests.
+                   same order. full tier: tree format build tests release version asan tsan tidy pristine fuzz (deno appended 2026-10-08). fast tier: format build tests.
                    The teeth were re-measured on the converted gate rather than assumed:
                    an unformatted new source file dropped in the tree makes the fast tier
                    report GATE FAILED naming the `format` stage — captured in

@@ -20,11 +20,14 @@ kind <name> = <number>
 - One name per number, and one number per name. Two names for one number would make `dump`
   ambiguous, which is the only reason for the second half of the rule.
 
-A row then accepts either spelling, and they are the same row:
+A row then accepts either spelling, and they are the same row (a comment is its own line — the
+format has no trailing comments, so the notes go above the row):
 
 ```
-transition Idle --tick--> Running      # the declared name
-transition Idle --1--> Running         # the number it stands for
+# the declared name
+transition Idle --tick--> Running
+# the number it stands for
+transition Idle --1--> Running
 ```
 
 `-- 1 -->`, `--1x-->`, `--+1-->` and an empty slot are still `malformed kind token`: rule 4 is not

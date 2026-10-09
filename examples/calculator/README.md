@@ -10,7 +10,7 @@ this is a small, complete example of the whole pipeline —
 
 ## Run it
 
-    ./tools/ci.sh build
+    ./scripts/gate.sh --tier fast            # configures and builds the binaries under ./build/
     ./build/calculator                       # answers; a prompt only on a terminal
     ./build/calculator < input/session.txt   # the recorded session, answers only
 
@@ -80,15 +80,21 @@ printing.
     version 1
     machine Calculator
     initial Entry
-    kind number = 1      # a name for what the rows below used to spell --1--
+    # a name for what the rows below used to spell --1--
+    kind number = 1
     ...
-    state Entry entry clear_all            # arriving in Entry resets the line (ENTRY_EXIT.md)
+    # arriving in Entry resets the line (ENTRY_EXIT.md)
+    state Entry entry clear_all
 
-    transition Entry --number--> Accum action take_operand       # first operand of a line
-    transition Accum --add--> PendingAdd                         # no action: the state IS the operator
-    transition PendingAdd --number--> Accum action add_operand   # second operand: do the sum
+    # first operand of a line
+    transition Entry --number--> Accum action take_operand
+    # no action: the state IS the operator
+    transition Accum --add--> PendingAdd
+    # second operand: do the sum
+    transition PendingAdd --number--> Accum action add_operand
     transition PendingDiv --1--> Error when eq 0 action note_division_by_zero
-    transition PendingDiv --1--> Accum action div_operand        # guarded first: canonical order
+    # guarded first: canonical order
+    transition PendingDiv --1--> Accum action div_operand
 
 Read it as a sentence: "in `PendingAdd`, a number means add it and go back to `Accum`". Three
 things are worth noticing, because they are the vocabulary the format gives you:
@@ -107,6 +113,8 @@ things are worth noticing, because they are the vocabulary the format gives you:
    `state` declaration; a `state` line only decorates one with entry/exit actions.
 2. **Generate.** Add the file to `FSMTABLE_GENERATOR_INPUTS` in `CMakeLists.txt`, or run the tool
    by hand: `./build/fsmtable-gen my.fsm -o my.hpp` (exit 0 written, 1 unusable input, 2 bad usage).
+   `--target deno` writes the same machine as one TypeScript module instead — a union of states and
+   a pure `step(state, event)` — the second back end `GENERATOR.md` documents.
 3. **Read the header it wrote** (`build/generated/fsm_my.hpp`): an `enum class` for the states and
    one for the kinds, `MyEvent{kind, value}`, one declaration per action your file named (including
    its `entry`/`exit` clauses), `MyRows` in canonical order, `makeMy()`, and `MyStateNames` /

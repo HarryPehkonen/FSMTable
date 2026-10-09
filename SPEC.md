@@ -7,7 +7,8 @@ file before writing code. Follow the stages in order. Do not skip the gate.
 
 - **Tests first.** Write the test that fails, watch it fail for the right reason, then
   make it pass. A test that has never failed proves nothing.
-- **Run the gate after every change**: `./tools/ci.sh` must print a PASS verdict.
+- **Run the gate after every change**: `./scripts/gate.sh` must print a PASS verdict (the gate is
+  `gate.toml`, run by `kit-ci`; section 6).
 - **Do not invent scope.** If this spec does not ask for it, do not build it. If
   something is genuinely ambiguous, write the question into `QUESTIONS.md` and take the
   simplest reading rather than guessing elaborately.
@@ -148,7 +149,7 @@ Dumping:
 ## 6. The gate (no exceptions, no CI)
 
 There is a project kit at `~/hermes-workspace/AI-DEV-STARTER`. Follow its **PLUNK-IN**
-for the C++ template, then make sure `./tools/ci.sh` exists and these stages run:
+for the C++ template, then make sure the gate runs and these stages are all covered:
 
     format -> build -> lint -> tests -> fuzz
 
@@ -159,10 +160,17 @@ for the C++ template, then make sure `./tools/ci.sh` exists and these stages run
 - `fuzz`: the libFuzzer target built with `-fsanitize=fuzzer,address,undefined`, run for
   **60 seconds** with the checked-in corpus. Any artifact is a failure to investigate,
   not to delete.
-- `./tools/ci.sh` with no arguments must run all of the above and print an unmistakable
+- the gate with no arguments must run all of the above and print an unmistakable
   verdict line.
 - **Do not add `.github/workflows/` or any hosted CI.** Gates live in the repo.
 - Commit hooks: the kit's, wired and working. Do not commit with `--no-verify`.
+
+The gate was one bash script (`tools/ci.sh`) when this stage was built. It is now `gate.toml`
+— the stages, their tiers and their failure rules — run by `kit-ci` from `scripts/gate.sh`,
+with one `scripts/<stage>.sh` per stage (`INCIDENTS.md` records the conversion). The five
+stages above are all still run: `lint` is named `tidy` there (clang-tidy is the linter), and
+the full tier adds `tree`, `release`, `version`, `asan`, `tsan`, `pristine` and `deno` beside
+them.
 
 ## 7. The corpus (frozen, checked in)
 
@@ -195,7 +203,7 @@ next stage in the same sitting.
 
 ## 9. Acceptance for stage A
 
-- `./tools/ci.sh` prints its PASS verdict, with the fuzz stage having run 60 seconds.
+- `./scripts/gate.sh` prints its PASS verdict, with the fuzz stage having run 60 seconds.
 - Every test in section 5 exists, under that name, and passes.
 - The corpus rules in section 7 hold.
 - A `REPORT.md` exists, filled in as described below.

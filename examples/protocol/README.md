@@ -28,6 +28,10 @@ The same three as the calculator, and the same rule about who may edit what:
 
 `protocol.hpp` is the seam between the last two: the driver's whole interface to the machine.
 
+The generator has a second back end: `--target deno` emits this same machine as one TypeScript
+module — a `State` union and a pure `step(state, event)`, with the exit/action/entry composition
+carried as an ordered list of names ([GENERATOR.md](../../GENERATOR.md)).
+
 ## Who owns what, in this machine's own terms
 
 This is the part worth reading twice, because it is where a real connection and a table part company.
