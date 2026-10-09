@@ -420,3 +420,70 @@ Three things this delivery fixed rather than wrote down:
     The tests stage's own line, from .ci-logs/tests.log on that run:
 
     100% tests passed, 0 tests failed out of 71
+
+## Appendix — the csv example: the rows that carry the actions
+
+`examples/csv/` is the fifth example and the one whose subject is the row → action tie rather than a
+decision about a value: four states, fifteen rows, three actions, and a byte stream in which one of
+the four kinds carries the byte itself — the calculator's value-on-the-event trick (`event.value`),
+spent here on the data. It exists because the generator had taught a value that is a threshold and a
+clock (`protocol/`) and not a value that *is* the input.
+
+    what                                        document
+    the machine                                 examples/csv/csv.fsm (4 states, 15 rows, 4 kinds)
+    the driver: classification, CRLF, EOF       examples/csv/csv.cpp
+    the API                                     examples/csv/csv.hpp
+    the shell                                   examples/csv/main.cpp
+    the worked example                          examples/csv/README.md
+    the two recorded runs                       examples/csv/input/session.{csv,expected},
+                                                examples/csv/input/malformed.{csv,expected}
+    the four cases that hold it                 CMakeLists.txt — 4 ctest cases (75 in the suite)
+    the checker that holds its blocks           tools/check-doc-claims.sh (item 9, check_file_block)
+    the readings                                QUESTIONS.md Q21 the CR, Q22 the tolerant quote,
+                                                Q23 the missing row, Q24 the one action slot,
+                                                Q25 the end of input
+
+The machine's argument is its asymmetry: a comma and a line end are DATA inside `Quoted` and
+delimiters in every other state, so the difference between `a,b` and `"a,b"` is a state and nothing
+else — one table, and the quoting falls out of which state the byte arrived in. The driver owns the
+three things a table cannot hold: what a byte IS, that the two bytes of CRLF are one line end, and
+what a record left open at end of input means.
+
+Five things this delivery measured rather than assumed:
+
+* **The design brief's row cannot be written.** It asked for `action end_cell, end_record` on every
+  `--newline-->` row. The frozen format gives a row one `action` slot and the generator says so with a
+  line number — `fsmtable-gen: ...:5: malformed action name 'end_cell,'`, exit 1 — and the back end's
+  `action()` refuses a second call as well. So the newline row's single action, `end_record`, closes
+  the field and then the record (Q24). The bytes are identical to what the brief wanted; what the
+  format cannot express is the decomposition into two names.
+* **A bare `state <Name>` line is not legal.** `state FieldStart`, with no clause, is `state needs an
+  entry or exit clause`. A state is declared by appearing in `initial`, `<from>` or `<to>`; the `state`
+  directive exists only to carry an `entry`/`exit` clause. `csv.fsm` therefore has four states and no
+  `state` lines at all.
+* **The tree check's comment was a count, and it was low.** With this example's `csv.fsm` the tree
+  check inspects 9 `.fsm` files; before it, 8. The comment says 9 now and the floor stays where it was
+  — a vacuity guard, not a pin on the number.
+* **A README that quotes a recorded RUN needs a different check from one that quotes a tool.** The
+  output blocks re-run a command; this example's two recorded blocks are fed through the binary by the
+  ctest cases, and a piped stdin is not something that block vocabulary can express. `check_file_block`
+  compares the block against the committed `input/*.expected` file instead, which puts the README inside
+  the chain the ctest case already completes — so the quoted run cannot drift from the trace a reader
+  would get even when the binary and the `.expected` file still agree.
+* **Six sabotages, each caught, each undone.** Deleting `transition QuoteSeen --quote--> Quoted` from
+  `csv.fsm` fails the ctest suite AND the worked recipe's counts; dropping `end_cell()` from
+  `end_record` fails the suite; flipping `main`'s refusal exit to 0 fails the exit-code half of the
+  refusal case; editing one `Cell:` line in the README's session block fails `check_file_block`;
+  deleting the trace block's `$ ` line fails `check_output_block` with "runs no command, so nothing
+  was checked". After every edit the tree was restored and re-run green (ctest `csv_` exit 0,
+  `check-doc-claims.sh` exit 0), and the ctest suite runs 75 cases, the four new ones included.
+
+    Gate verdict, verbatim, from the run on commit 3f8fb4d (this section was added after it, and the
+    full tier runs again on the push):
+
+    kit-ci: gate.toml — tier 'full', 12 stage(s)
+    GATE PASSED — 12 passed, 0 failed, 0 skipped
+
+    The tests stage's own line, from .ci-logs/tests.log on that run:
+
+    100% tests passed, 0 tests failed out of 75
