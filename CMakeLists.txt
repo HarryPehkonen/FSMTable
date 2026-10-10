@@ -244,10 +244,9 @@ if(FSMTABLE_BUILD_TESTS)
     target_include_directories(fsmTable_entry_exit_differential PRIVATE
         "${FSMTABLE_GENERATED_DIR}")
     add_test(NAME fsmTable_entry_exit_differential COMMAND fsmTable_entry_exit_differential)
-    # This test is expected to fail: it records three incompatible readings of the same
-    # machine, which is the RED evidence for review finding #1. When the semantics are
-    # unified, remove WILL_FAIL and the test passes as a regression guard.
-    set_tests_properties(fsmTable_entry_exit_differential PROPERTIES WILL_FAIL TRUE)
+    # RULING (t_ba3c6d56): fleet standard is exit → action → entry; self-transitions
+    # are external. The harness is now the fleet regression guard.
+    set_tests_properties(fsmTable_entry_exit_differential PROPERTIES WILL_FAIL FALSE)
 
     # --- The generator: its headers are produced at build time and compiled by the test that
     # follows, so a generator that emits something that does not compile fails the build rather

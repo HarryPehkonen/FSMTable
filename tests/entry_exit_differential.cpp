@@ -160,22 +160,23 @@ std::vector<std::string> run_generated() {
 
 } // namespace
 
-TEST(EntryExitDifferential, ThreeImplementationsAgree) {
+TEST(EntryExitDifferential, InterpretedMatchesGenerated) {
     const auto interpreted = run_interpreted();
     const auto compiled_plain = run_compiled_plain();
     const auto generated = run_generated();
 
-    const std::string msg
-        = "\n  fsmgine::FSM (interpreted): " + format_trace(interpreted)
-          + "\n  compiled::Machine (plain):  " + format_trace(compiled_plain)
-          + "\n  fsmtable-gen (generated):   " + format_trace(generated)
-          + "\n\n  Expected if all three agreed (they don't):"
-          + "\n  Interpreted order is: action -> exit -> enter; self-transition skips exit/enter"
-          + "\n  Compiled has no entry/exit at all"
-          + "\n  Generated order is: exit -> action -> entry; self-transition runs both";
+    const std::string msg = "\n  fsmgine::FSM (interpreted): " + format_trace(interpreted)
+                            + "\n  compiled::Machine (plain):  " + format_trace(compiled_plain)
+                            + "\n  fsmtable-gen (generated):   " + format_trace(generated)
+                            + "\n\n  RULING (t_ba3c6d56): interpreted and generated must agree"
+                            + "\n  (exit -> action -> entry; self-transitions external)."
+                            + "\n  compiled::Machine has no entry/exit hooks (A2 caveat) — it is"
+                            + "\n  excluded from the equality check.";
 
-    // All three should agree if semantics matched. They don't — that's the RED.
-    EXPECT_EQ(interpreted, compiled_plain) << msg;
+    // RULING (t_ba3c6d56): the fleet standard is exit -> action -> entry with
+    // external self-transitions.  fsmgine::FSM (interpreted) and fsmtable-gen
+    // (generated) must agree.  compiled::Machine has no entry/exit concept at
+    // all — that is the A2 caveat documented in Machine.hpp — so it is
+    // deliberately excluded from this regression guard.
     EXPECT_EQ(interpreted, generated) << msg;
-    EXPECT_EQ(compiled_plain, generated) << msg;
 }
