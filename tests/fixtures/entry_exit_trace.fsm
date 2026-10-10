@@ -1,0 +1,11 @@
+version 1
+machine TraceTest
+initial A
+kind go = 1
+kind loop = 2
+kind back = 3
+state A entry on_entry_a exit on_exit_a
+state B entry on_entry_b exit on_exit_b
+transition A --go--> B action on_ab
+transition B --loop--> B action on_bb
+transition B --back--> A action on_ba

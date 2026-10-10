@@ -232,6 +232,23 @@ if(FSMTABLE_BUILD_TESTS)
         PRIVATE FSMTABLE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/corpus")
     add_test(NAME fsmTable_differential COMMAND fsmTable_differential)
 
+    # Entry/exit semantics differential: three back ends, one machine.
+    # Uses fsmgine::FSM (interpreted) which needs StringInterner — compiled from FSMgine's source.
+    add_executable(fsmTable_entry_exit_differential tests/entry_exit_differential.cpp
+        "${FSMTABLE_FSMGINE_DIR}/src/StringInterner.cpp")
+    add_dependencies(fsmTable_entry_exit_differential fsmtable_generated_headers)
+    target_link_libraries(fsmTable_entry_exit_differential PRIVATE fsmTable GTest::gtest_main)
+    target_compile_options(fsmTable_entry_exit_differential PRIVATE ${FSMTABLE_WARNINGS})
+    target_include_directories(fsmTable_entry_exit_differential SYSTEM PRIVATE
+        "${FSMTABLE_FSMGINE_DIR}/include")
+    target_include_directories(fsmTable_entry_exit_differential PRIVATE
+        "${FSMTABLE_GENERATED_DIR}")
+    add_test(NAME fsmTable_entry_exit_differential COMMAND fsmTable_entry_exit_differential)
+    # This test is expected to fail: it records three incompatible readings of the same
+    # machine, which is the RED evidence for review finding #1. When the semantics are
+    # unified, remove WILL_FAIL and the test passes as a regression guard.
+    set_tests_properties(fsmTable_entry_exit_differential PROPERTIES WILL_FAIL TRUE)
+
     # --- The generator: its headers are produced at build time and compiled by the test that
     # follows, so a generator that emits something that does not compile fails the build rather
     # than a review. Paths are relative to the source directory so each header's provenance
@@ -242,7 +259,8 @@ if(FSMTABLE_BUILD_TESTS)
         corpus/minimal.fsm
         tests/fixtures/refined_pair.fsm
         tests/fixtures/named_kinds.fsm
-        tests/fixtures/entry_exit.fsm)
+        tests/fixtures/entry_exit.fsm
+        tests/fixtures/entry_exit_trace.fsm)
     set(FSMTABLE_GENERATED_HEADERS "")
     foreach(fsm IN LISTS FSMTABLE_GENERATOR_INPUTS)
         get_filename_component(stem "${fsm}" NAME_WE)
