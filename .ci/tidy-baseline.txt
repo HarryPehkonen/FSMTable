@@ -26,3 +26,4 @@
 fuzz/fuzz_fsmtable.cpp: warning: do not use pointer arithmetic [cppcoreguidelines-pro-bounds-pointer-arithmetic]
 gen/fsmtable-gen.cpp: warning: do not use pointer arithmetic [cppcoreguidelines-pro-bounds-pointer-arithmetic]
 src/fsmtable.hpp: warning: enum 'Op' uses a larger base type ('int', size: 4 bytes) than necessary for its value set, consider using 'std::uint8_t' (1 byte) as the base type to reduce its size [performance-enum-size]
+tests/entry_exit_differential.cpp: warning: variable 'g_trace' is non-const and globally accessible, consider making it const [cppcoreguidelines-avoid-non-const-global-variables]
