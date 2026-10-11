@@ -183,6 +183,16 @@ bool same_kind_names(const std::vector<KindName>& a, const std::vector<KindName>
     return true;
 }
 
+bool same_state_actions(const std::vector<StateAction>& a, const std::vector<StateAction>& b) {
+    if (a.size() != b.size())
+        return false;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (a[i].state != b[i].state || a[i].enter != b[i].enter || a[i].exit != b[i].exit)
+            return false;
+    }
+    return true;
+}
+
 // The refusal path of this file: the parser's `reject` contract (no result, a message, a line
 // number) for the text a rename produces rather than for a machine.
 std::optional<std::string> refuse(Error& error, std::string message) {
@@ -279,7 +289,8 @@ std::optional<std::string> rename(std::string_view text, const std::vector<Renam
     // The parse products of the input: the same call `parse` makes, so a text no machine comes
     // out of is refused with the parser's own line and message and no rename happens.
     std::vector<KindName> kind_names;
-    const auto machine = parse(text, error, kind_names);
+    std::vector<StateAction> state_actions;
+    const auto machine = parse(text, error, kind_names, state_actions);
     if (!machine.has_value())
         return std::nullopt;
 
@@ -379,11 +390,24 @@ std::optional<std::string> rename(std::string_view text, const std::vector<Renam
     for (const KindName& entry : kind_names)
         expected_names.push_back(KindName{std::string(mapped(plan.kind, entry.name)), entry.kind});
 
+    // The expected decorations: state names mapped through the plan, action names unchanged.
+    std::vector<StateAction> expected_actions;
+    expected_actions.reserve(state_actions.size());
+    for (const StateAction& entry : state_actions) {
+        StateAction mapped_action;
+        mapped_action.state = std::string(mapped(plan.state, entry.state));
+        mapped_action.enter = entry.enter;
+        mapped_action.exit = entry.exit;
+        expected_actions.push_back(std::move(mapped_action));
+    }
+
     Error check{0, ""};
     std::vector<KindName> written_names;
-    const auto written = parse(out, check, written_names);
+    std::vector<StateAction> written_actions;
+    const auto written = parse(out, check, written_names, written_actions);
     if (!written.has_value() || !same_machine(*written, expected)
-        || !same_kind_names(written_names, expected_names)) {
+        || !same_kind_names(written_names, expected_names)
+        || !same_state_actions(written_actions, expected_actions)) {
         return refuse(error, "the rewrite did not reproduce the renamed machine");
     }
     return out;

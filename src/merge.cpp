@@ -246,17 +246,46 @@ std::optional<MergeResult> merge(std::string_view first, std::string_view second
         return refuse(error, std::move(message));
     }
 
+    // Pre-existing unreachable states in each input, before the merge.
+    const std::vector<std::string> a_orphans = unreachable(*a_machine);
+    const std::vector<std::string> b_orphans = unreachable(*b_machine);
+    std::map<std::string, bool> pre_existing;
+    for (const std::string& s : a_orphans)
+        pre_existing[s] = true;
+    for (const std::string& s : b_orphans)
+        pre_existing[s] = true;
+
     const std::vector<std::string> orphans = unreachable(*written);
     if (!orphans.empty()) {
-        std::string message = "the merge leaves ";
-        message += std::to_string(orphans.size());
-        message += " unreachable state(s) — no path from the merged initial '";
-        message += merged.initial;
-        message += "': ";
-        message += listed(orphans);
-        message
-            += " — the two machines do not meet there; give the second machine a state name the "
-               "first already reaches, or a row into it";
+        std::vector<std::string> merge_created;
+        std::vector<std::string> already;
+        for (const std::string& state : orphans) {
+            if (pre_existing.find(state) != pre_existing.end()) {
+                already.push_back(state);
+            } else {
+                merge_created.push_back(state);
+            }
+        }
+
+        std::string message;
+        if (!merge_created.empty()) {
+            message = "the merge leaves ";
+            message += std::to_string(merge_created.size());
+            message += " unreachable state(s) — no path from the merged initial '";
+            message += merged.initial;
+            message += "': ";
+            message += listed(merge_created);
+            message += " — the two machines do not meet there; give the second machine a state "
+                       "name the "
+                       "first already reaches, or a row into it";
+        }
+        if (!already.empty()) {
+            if (!message.empty())
+                message += "; ";
+            message += std::to_string(already.size());
+            message += " state(s) already unreachable before the merge: ";
+            message += listed(already);
+        }
         return refuse(error, std::move(message));
     }
 

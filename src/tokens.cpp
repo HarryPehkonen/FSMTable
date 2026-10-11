@@ -22,9 +22,7 @@
 namespace fsmtable {
 namespace detail {
 
-bool is_space(char c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
-}
+bool is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 
 bool is_ident_start(char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'; }
 

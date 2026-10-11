@@ -99,8 +99,8 @@ std::string dump(const Machine& m, const std::vector<KindName>& kind_names);
 //
 //     state <name> [entry <action>] [exit <action>]
 //
-// At least one clause, `entry` before `exit`, each at most once, and two lines for one state
-// merge. A row that fires from A to B runs A's `exit`, then the row's own action, then B's
+// At least one clause, `entry` before `exit` on one line, each at most once, and two lines for one
+// state merge. A row that fires from A to B runs A's `exit`, then the row's own action, then B's
 // `entry` — the order statecharts use (Q13). A self-transition is an external one: it runs both.
 //
 // As with the kind names, this is carried beside the machine rather than inside it, so a caller

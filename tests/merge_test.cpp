@@ -519,4 +519,42 @@ TEST(MergeTest, TheFingerprintMovesWhenTheMergedMachineMoves) {
     EXPECT_NE(merged_ok(kMinimal, kMinimal).fingerprint, merged_ok(kOther, kMinimal).fingerprint);
 }
 
+// ---------------------------------------------------------------- pre-existing unreachable
+// (finding #7c)
+
+TEST(MergeTest, MessageDistinguishesPreExistingUnreachableFromMergeCreated) {
+    // The first machine already has an unreachable state "Loose" — the merge did not create it.
+    // The current diagnostic says "the merge leaves 1 unreachable state(s)" which misattributes
+    // the pre-existing orphan to the merge. The fix should say "already unreachable" instead.
+    constexpr std::string_view kOrphaned = "version 1\n"
+                                           "machine Orphaned\n"
+                                           "initial Start\n"
+                                           "transition Start --1--> Done\n"
+                                           "transition Loose --2--> Start\n";
+    const Refusal refusal = refused(kOrphaned, kMinimal);
+    EXPECT_EQ(refusal.line, 0);
+    // Today: "the merge leaves 1 unreachable state(s)..." — blames the merge.
+    // After fix: should say "already unreachable" or "pre-existing" for Loose.
+    EXPECT_EQ(refusal.message.find("the merge leaves"), std::string::npos)
+        << "pre-existing orphan should not be blamed on the merge: " << refusal.message;
+    EXPECT_NE(refusal.message.find("Loose"), std::string::npos)
+        << "should name the pre-existing state: " << refusal.message;
+}
+
+TEST(MergeTest, MessageDistinguishesMixedPreExistingAndMergeCreated) {
+    // Left has orphan "Loose". Merge with kTraffic (Red, Green, Yellow) adds 3 more orphans
+    // because the two machines share no seam. The message should split the two groups.
+    constexpr std::string_view kOrphaned = "version 1\n"
+                                           "machine Orphaned\n"
+                                           "initial Start\n"
+                                           "transition Start --1--> Done\n"
+                                           "transition Loose --2--> Start\n";
+    const Refusal refusal = refused(kOrphaned, kTraffic);
+    EXPECT_EQ(refusal.line, 0);
+    // "Loose" is pre-existing; Red, Green, Yellow are merge-created.
+    // The merge-created ones should be blamed ("the merge leaves..."), Loose should not.
+    EXPECT_NE(refusal.message.find("Loose"), std::string::npos)
+        << "should name the pre-existing state: " << refusal.message;
+}
+
 } // namespace

@@ -173,7 +173,7 @@ std::vector<std::string> lines_of(std::string_view text) {
 }
 
 bool is_comment(const std::string& line) {
-    const std::size_t first = line.find_first_not_of(" \t\r\v\f");
+    const std::size_t first = line.find_first_not_of(" \t\r");
     return first == std::string::npos || line[first] == '#';
 }
 
@@ -478,6 +478,76 @@ TEST(RenameSpecTest, RefusesWhatIsNotARename) {
             << "'" << candidate << "' was read as a rename";
         EXPECT_FALSE(message.empty()) << "'" << candidate << "' was refused without a message";
     }
+}
+
+// ---------------------------------------------------------------- rename() decoration proof gap
+// (finding #5)
+//
+// rename() proves its output by re-parsing with the 3-arg parse (discards StateActions) and
+// comparing. This means entry/exit decorations are never verified by the proof. The test below
+// verifies the CONTRACT externally (4-arg parse), and after the GREEN fix, the proof itself
+// will also check decorations.
+
+TEST(RenameTest, ProofVerifiesStateDecorations) {
+    // A machine with entry/exit decorations on multiple states.
+    constexpr std::string_view kDecorated
+        = "version 1\n"
+          "machine Door\n"
+          "initial Closed\n"
+          "state Closed entry on_entry_closed exit on_exit_closed\n"
+          "state Open entry on_entry_open\n"
+          "transition Closed --1--> Open\n"
+          "transition Open --2--> Closed\n";
+    const std::string out = renamed_ok(kDecorated, {spec(Rename::Target::State, "Closed", "Shut")});
+
+    // The output must carry the decorations under the new name.
+    EXPECT_NE(out.find("state Shut entry on_entry_closed exit on_exit_closed"), std::string::npos)
+        << "decorations must follow the renamed state:\n"
+        << out;
+
+    // Verify through the 4-arg parse that the decorations are correct.
+    Error error{0, ""};
+    std::vector<KindName> names;
+    std::vector<fsmtable::StateAction> actions;
+    const auto machine = fsmtable::parse(out, error, names, actions);
+    ASSERT_TRUE(machine.has_value()) << "renamed output must parse: " << error.message;
+
+    // Find the renamed state's decoration.
+    const fsmtable::StateAction* shut_action = nullptr;
+    const fsmtable::StateAction* open_action = nullptr;
+    for (const auto& a : actions) {
+        if (a.state == "Shut")
+            shut_action = &a;
+        if (a.state == "Open")
+            open_action = &a;
+    }
+    ASSERT_NE(shut_action, nullptr) << "renamed state 'Shut' must have decorations";
+    EXPECT_EQ(shut_action->enter, "on_entry_closed");
+    EXPECT_EQ(shut_action->exit, "on_exit_closed");
+    ASSERT_NE(open_action, nullptr) << "'Open' must keep its decorations";
+    EXPECT_EQ(open_action->enter, "on_entry_open");
+    EXPECT_EQ(open_action->exit, "");
+}
+
+// ---------------------------------------------------------------- whitespace (finding #7b)
+//
+// The fleet decision (JSOM) is space/tab/LF/CR only. These tests assert that \v and \f
+// are NOT field separators. They fail today (RED) because is_space includes them.
+
+TEST(WhitespaceTest, VerticalTabIsNotAFieldSeparator) {
+    // With \v as whitespace, "A\v--1--> B" splits into fields A, --1-->, B and parses.
+    // After the fix, \v is part of the token and the parse fails.
+    const std::string text = "version 1\nmachine M\ninitial A\ntransition A\v--1--> B\n";
+    Error error{0, ""};
+    const auto machine = fsmtable::parse(text, error);
+    EXPECT_FALSE(machine.has_value()) << "\\v should not be a field separator";
+}
+
+TEST(WhitespaceTest, FormFeedIsNotAFieldSeparator) {
+    const std::string text = "version 1\nmachine M\ninitial A\ntransition A\f--1--> B\n";
+    Error error{0, ""};
+    const auto machine = fsmtable::parse(text, error);
+    EXPECT_FALSE(machine.has_value()) << "\\f should not be a field separator";
 }
 
 } // namespace
